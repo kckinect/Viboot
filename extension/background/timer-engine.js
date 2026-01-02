@@ -88,30 +88,41 @@ export class SleepTimerEngine {
   startCountdown() {
     if (this.intervalId) clearInterval(this.intervalId);
     
-    this.intervalId = setInterval(async () => {
-      if (!this.activeTimer) {
+    this.intervalId = setInterval(() => {
+      // Non-async wrapper to prevent timing issues
+      this.tick().catch(e => console.error('[Viboot] Tick error:', e));
+    }, 1000);
+  }
+  
+  async tick() {
+    if (!this.activeTimer || this.isExpiring) {
+      return;
+    }
+    
+    this.activeTimer.remaining--;
+    
+    // Check for expiration FIRST, before any other async operations
+    if (this.activeTimer.remaining <= 0) {
+      // Stop the interval immediately
+      if (this.intervalId) {
         clearInterval(this.intervalId);
         this.intervalId = null;
-        return;
       }
-      
-      this.activeTimer.remaining--;
-      
-      if (this.activeTimer.remaining % 10 === 0) {
-        await this.saveTimerState();
-      }
-      
-      if (this.activeTimer.remaining % 60 === 0) {
-        this.updateBadge();
-      }
-      
-      if (this.activeTimer.remaining <= 0) {
-        await this.onTimerExpire();
-        return;
-      }
-      
-      this.broadcastTimerUpdate();
-    }, 1000);
+      await this.onTimerExpire();
+      return;
+    }
+    
+    // Only save state periodically (every 10 seconds)
+    if (this.activeTimer.remaining % 10 === 0) {
+      this.saveTimerState().catch(e => console.warn('[Viboot] Save error:', e));
+    }
+    
+    // Update badge every minute
+    if (this.activeTimer.remaining % 60 === 0) {
+      this.updateBadge();
+    }
+    
+    this.broadcastTimerUpdate();
   }
   
   async handleAlarm(alarmName) {
