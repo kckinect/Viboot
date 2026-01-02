@@ -592,18 +592,24 @@ body {
   background: var(--bg-tertiary);
   border-radius: 10px;
   border: 1px solid var(--border);
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .presets-editor-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .preset-edit-row {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .preset-number {
@@ -623,6 +629,8 @@ body {
 .preset-input {
   flex: 1;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
   padding: 10px 12px;
   background: #1a1b23;
   border: 2px solid #3d3f4a;
@@ -631,6 +639,7 @@ body {
   font-size: 13px;
   outline: none;
   transition: border-color 0.2s, background 0.2s;
+  box-sizing: border-box;
 }
 
 [data-theme="light"] .preset-input {
