@@ -201,17 +201,40 @@ if (!window.PlatformStrategies) {
 
     netflix: {
       name: 'Netflix',
-      selectors: ['[data-uia*="player"] video', 'video'],
+      selectors: ['[data-uia*="player"] video', '.watch-video--player-view video', 'video'],
 
       async findVideo() {
+        // Try direct selectors first
         for (const sel of this.selectors) {
-          const v = document.querySelector(sel);
-          if (v && v.readyState >= 1) return v;
+          try {
+            const v = document.querySelector(sel);
+            if (v && v.readyState >= 1) return v;
+          } catch (e) { /* invalid selector */ }
         }
-        return null;
+        // Wait for video with MutationObserver
+        return this.waitForVideo(3000);
+      },
+
+      async waitForVideo(timeout) {
+        return new Promise(resolve => {
+          const existing = document.querySelector('video');
+          if (existing && existing.readyState >= 1) { resolve(existing); return; }
+          
+          const observer = new MutationObserver(() => {
+            const video = document.querySelector('video');
+            if (video && video.readyState >= 1) { observer.disconnect(); resolve(video); }
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+          setTimeout(() => { observer.disconnect(); resolve(document.querySelector('video')); }, timeout);
+        });
       },
 
       async pause(video) {
+        // Try keyboard shortcut first (more reliable on Netflix)
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', keyCode: 32, bubbles: true }));
+        await new Promise(r => setTimeout(r, 100));
+        if (video.paused) return true;
+        // Direct pause fallback
         if (!video.paused) { await video.pause(); return true; }
         return false;
       },
@@ -247,14 +270,32 @@ if (!window.PlatformStrategies) {
 
     prime: {
       name: 'Prime Video',
-      selectors: ['[class*="PlayerVideo"] video', '[class*="video-player"] video', 'video'],
+      selectors: ['[class*="webPlayer"] video', '[class*="PlayerVideo"] video', '[class*="video-player"] video', 'video'],
 
       async findVideo() {
+        // Prime Video often loads video dynamically
         for (const sel of this.selectors) {
-          const v = document.querySelector(sel);
-          if (v && v.readyState >= 1) return v;
+          try {
+            const v = document.querySelector(sel);
+            if (v && (v.readyState >= 1 || v.src)) return v;
+          } catch (e) { /* invalid selector */ }
         }
-        return null;
+        // Wait for video with MutationObserver
+        return this.waitForVideo(3000);
+      },
+
+      async waitForVideo(timeout) {
+        return new Promise(resolve => {
+          const existing = document.querySelector('video');
+          if (existing) { resolve(existing); return; }
+          
+          const observer = new MutationObserver(() => {
+            const video = document.querySelector('video');
+            if (video) { observer.disconnect(); resolve(video); }
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+          setTimeout(() => { observer.disconnect(); resolve(document.querySelector('video')); }, timeout);
+        });
       },
 
       async pause(video) {
@@ -336,11 +377,32 @@ if (!window.PlatformStrategies) {
 
     generic: {
       name: 'Generic',
-      selectors: ['video', '[class*="player"] video', '[class*="video"] video'],
+      selectors: ['video', '[class*="player"] video', '[class*="video"] video', '[id*="player"] video'],
 
       async findVideo() {
-        const v = document.querySelector('video');
-        return v || null;
+        // Try all selectors
+        for (const sel of this.selectors) {
+          try {
+            const v = document.querySelector(sel);
+            if (v && (v.readyState >= 1 || v.src || v.currentSrc)) return v;
+          } catch (e) { /* invalid selector */ }
+        }
+        
+        // Find largest visible video (likely the main player)
+        const allVideos = document.querySelectorAll('video');
+        let bestVideo = null;
+        let bestArea = 0;
+        
+        for (const v of allVideos) {
+          const rect = v.getBoundingClientRect();
+          const area = rect.width * rect.height;
+          if (area > bestArea && rect.width > 100 && rect.height > 100) {
+            bestVideo = v;
+            bestArea = area;
+          }
+        }
+        
+        return bestVideo || allVideos[0] || null;
       },
 
       async pause(video) {
