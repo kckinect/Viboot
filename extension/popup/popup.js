@@ -35,8 +35,8 @@ const elements = {
   
   // Presets & Input
   presetsSection: document.getElementById('presetsSection'),
+  presetsGrid: document.getElementById('presetsGrid'),
   inputSection: document.getElementById('inputSection'),
-  presetBtns: document.querySelectorAll('.preset-btn'),
   customInput: document.getElementById('customInput'),
   setBtn: document.getElementById('setBtn'),
   
@@ -48,10 +48,19 @@ const elements = {
   showNotifications: document.getElementById('showNotifications'),
   autoPauseNext: document.getElementById('autoPauseNext'),
   
-  // Custom Timer
-  customPresetBtn: document.getElementById('customPresetBtn'),
-  customTimerValue: document.getElementById('customTimerValue'),
-  saveCustomBtn: document.getElementById('saveCustomBtn')
+  // Presets Editor
+  editPresetsBtn: document.getElementById('editPresetsBtn'),
+  presetsEditor: document.getElementById('presetsEditor'),
+  savePresetsBtn: document.getElementById('savePresetsBtn'),
+  resetPresetsBtn: document.getElementById('resetPresetsBtn'),
+  presetInputs: [
+    document.getElementById('preset1'),
+    document.getElementById('preset2'),
+    document.getElementById('preset3'),
+    document.getElementById('preset4'),
+    document.getElementById('preset5'),
+    document.getElementById('preset6')
+  ]
 };
 
 // ============================================
@@ -66,8 +75,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load settings (non-blocking)
     loadSettings().catch(e => console.warn('[Viboot] Settings load failed:', e));
     
-    // Load custom timer preset (non-blocking)
-    loadCustomTimer().catch(e => console.warn('[Viboot] Custom timer load failed:', e));
+    // Load presets and render buttons
+    await loadPresets();
     
     // Detect platform
     await detectPlatform();
@@ -417,80 +426,151 @@ async function saveSettings() {
 }
 
 // ============================================
-// CUSTOM TIMER PRESET
+// PRESET TIMERS
 // ============================================
 
-// Default custom timer: 30 minutes in seconds
-const DEFAULT_CUSTOM_TIMER = 30 * 60;
+// Default presets in seconds
+const DEFAULT_PRESETS = [
+  15 * 60,   // 15m
+  30 * 60,   // 30m
+  45 * 60,   // 45m
+  60 * 60,   // 1h
+  90 * 60,   // 1h 30m
+  120 * 60   // 2h
+];
 
-async function loadCustomTimer() {
+let currentPresets = [...DEFAULT_PRESETS];
+
+async function loadPresets() {
   try {
-    const result = await chrome.storage.local.get('customTimerSeconds');
-    const seconds = result.customTimerSeconds ?? DEFAULT_CUSTOM_TIMER;
+    const result = await chrome.storage.local.get('timerPresets');
+    if (result.timerPresets && Array.isArray(result.timerPresets) && result.timerPresets.length === 6) {
+      currentPresets = result.timerPresets;
+    } else {
+      currentPresets = [...DEFAULT_PRESETS];
+    }
     
-    // Update button text
-    updateCustomPresetButton(seconds);
+    // Render the preset buttons
+    renderPresetButtons();
     
-    // Update input field
-    elements.customTimerValue.value = formatSecondsToDisplay(seconds);
+    // Populate editor inputs
+    populatePresetEditor();
   } catch (error) {
-    console.error('[Viboot] Failed to load custom timer:', error);
-    updateCustomPresetButton(DEFAULT_CUSTOM_TIMER);
+    console.error('[Viboot] Failed to load presets:', error);
+    currentPresets = [...DEFAULT_PRESETS];
+    renderPresetButtons();
   }
 }
 
-async function saveCustomTimer() {
-  const input = elements.customTimerValue.value;
-  const seconds = parseTimeInput(input);
+function renderPresetButtons() {
+  elements.presetsGrid.innerHTML = '';
   
-  if (!seconds || seconds < 1) {
-    elements.customTimerValue.style.borderColor = 'var(--danger)';
-    setTimeout(() => {
-      elements.customTimerValue.style.borderColor = '';
-    }, 1000);
-    return;
-  }
+  currentPresets.forEach((seconds, index) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn';
+    btn.dataset.seconds = seconds;
+    btn.dataset.index = index;
+    btn.textContent = formatSecondsToDisplay(seconds);
+    btn.addEventListener('click', () => startPresetTimer(seconds));
+    elements.presetsGrid.appendChild(btn);
+  });
+}
+
+function startPresetTimer(seconds) {
+  startTimer(seconds / 60); // Convert to minutes
+}
+
+function populatePresetEditor() {
+  currentPresets.forEach((seconds, index) => {
+    if (elements.presetInputs[index]) {
+      elements.presetInputs[index].value = formatSecondsToDisplay(seconds);
+    }
+  });
+}
+
+async function savePresets() {
+  const newPresets = [];
+  let hasError = false;
   
-  const maxSeconds = 24 * 60 * 60; // 24 hours
-  if (seconds > maxSeconds) {
-    alert('Maximum is 24 hours');
-    return;
-  }
-  
-  try {
-    await chrome.storage.local.set({ customTimerSeconds: seconds });
-    updateCustomPresetButton(seconds);
+  for (let i = 0; i < 6; i++) {
+    const input = elements.presetInputs[i];
+    const value = input.value.trim();
     
-    // Show save confirmation
-    elements.saveCustomBtn.textContent = '✓';
-    elements.saveCustomBtn.style.background = 'var(--success)';
+    if (!value) {
+      // Use default if empty
+      newPresets.push(DEFAULT_PRESETS[i]);
+      input.value = formatSecondsToDisplay(DEFAULT_PRESETS[i]);
+      continue;
+    }
+    
+    const seconds = parseTimeInput(value);
+    
+    if (!seconds || seconds < 1) {
+      input.style.borderColor = 'var(--danger)';
+      hasError = true;
+      continue;
+    }
+    
+    const maxSeconds = 24 * 60 * 60; // 24 hours
+    if (seconds > maxSeconds) {
+      input.style.borderColor = 'var(--danger)';
+      hasError = true;
+      continue;
+    }
+    
+    input.style.borderColor = '';
+    newPresets.push(seconds);
+    input.value = formatSecondsToDisplay(seconds);
+  }
+  
+  if (hasError) {
     setTimeout(() => {
-      elements.saveCustomBtn.textContent = '💾';
-      elements.saveCustomBtn.style.background = '';
+      elements.presetInputs.forEach(input => {
+        input.style.borderColor = '';
+      });
     }, 1500);
-    
-    // Update input to normalized format
-    elements.customTimerValue.value = formatSecondsToDisplay(seconds);
-  } catch (error) {
-    console.error('[Viboot] Failed to save custom timer:', error);
+    return;
   }
-}
-
-function updateCustomPresetButton(seconds) {
-  const displayText = '⭐ ' + formatSecondsToDisplay(seconds);
-  elements.customPresetBtn.textContent = displayText;
-  elements.customPresetBtn.dataset.seconds = seconds;
-}
-
-async function startCustomTimer() {
+  
   try {
-    const result = await chrome.storage.local.get('customTimerSeconds');
-    const seconds = result.customTimerSeconds ?? DEFAULT_CUSTOM_TIMER;
-    startTimer(seconds / 60); // Convert to minutes
+    await chrome.storage.local.set({ timerPresets: newPresets });
+    currentPresets = newPresets;
+    renderPresetButtons();
+    
+    // Show success feedback
+    elements.savePresetsBtn.textContent = '✓ Saved!';
+    elements.savePresetsBtn.style.background = 'var(--success)';
+    setTimeout(() => {
+      elements.savePresetsBtn.textContent = '💾 Save Presets';
+      elements.savePresetsBtn.style.background = '';
+    }, 1500);
   } catch (error) {
-    console.error('[Viboot] Failed to start custom timer:', error);
-    startTimer(30); // Fallback to 30 minutes
+    console.error('[Viboot] Failed to save presets:', error);
   }
+}
+
+async function resetPresets() {
+  try {
+    await chrome.storage.local.remove('timerPresets');
+    currentPresets = [...DEFAULT_PRESETS];
+    renderPresetButtons();
+    populatePresetEditor();
+    
+    // Show reset feedback
+    elements.resetPresetsBtn.textContent = '✓ Reset!';
+    setTimeout(() => {
+      elements.resetPresetsBtn.textContent = '↩️ Reset to Default';
+    }, 1500);
+  } catch (error) {
+    console.error('[Viboot] Failed to reset presets:', error);
+  }
+}
+
+function togglePresetsEditor() {
+  const isHidden = elements.presetsEditor.classList.contains('hidden');
+  elements.presetsEditor.classList.toggle('hidden');
+  elements.editPresetsBtn.classList.toggle('active', isHidden);
+  elements.editPresetsBtn.textContent = isHidden ? '✏️ Done' : '✏️ Edit';
 }
 
 // ============================================
@@ -500,19 +580,6 @@ async function startCustomTimer() {
 function setupEventListeners() {
   // Theme toggle
   elements.themeToggle.addEventListener('click', toggleTheme);
-  
-  // Preset buttons (excluding custom preset)
-  elements.presetBtns.forEach(btn => {
-    if (!btn.dataset.custom) {
-      btn.addEventListener('click', () => {
-        const minutes = parseInt(btn.dataset.minutes, 10);
-        startTimer(minutes);
-      });
-    }
-  });
-  
-  // Custom preset button
-  elements.customPresetBtn.addEventListener('click', startCustomTimer);
   
   // Custom input
   elements.setBtn.addEventListener('click', handleCustomInput);
@@ -537,12 +604,18 @@ function setupEventListeners() {
   elements.showNotifications.addEventListener('change', saveSettings);
   elements.autoPauseNext.addEventListener('change', saveSettings);
   
-  // Custom timer save
-  elements.saveCustomBtn.addEventListener('click', saveCustomTimer);
-  elements.customTimerValue.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      saveCustomTimer();
-    }
+  // Presets editor
+  elements.editPresetsBtn.addEventListener('click', togglePresetsEditor);
+  elements.savePresetsBtn.addEventListener('click', savePresets);
+  elements.resetPresetsBtn.addEventListener('click', resetPresets);
+  
+  // Enter key in preset inputs
+  elements.presetInputs.forEach(input => {
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        savePresets();
+      }
+    });
   });
 }
 

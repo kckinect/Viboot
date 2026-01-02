@@ -51,13 +51,8 @@
 
     <!-- Quick Presets -->
     <section class="presets-section" id="presetsSection">
-      <div class="presets-grid">
-        <button class="preset-btn" data-minutes="15">15m</button>
-        <button class="preset-btn" data-minutes="30">30m</button>
-        <button class="preset-btn" data-minutes="45">45m</button>
-        <button class="preset-btn" data-minutes="60">1h</button>
-        <button class="preset-btn" data-minutes="90">1.5h</button>
-        <button class="preset-btn custom-preset" id="customPresetBtn" data-custom="true" title="Your custom timer">⭐ 30m</button>
+      <div class="presets-grid" id="presetsGrid">
+        <!-- Presets are dynamically rendered by popup.js -->
       </div>
     </section>
 
@@ -110,19 +105,45 @@
         
         <div class="divider-thin"></div>
         
-        <div class="setting-row custom-timer-row">
-          <label class="setting-label">⭐ Custom preset</label>
-          <div class="custom-timer-input">
-            <input 
-              type="text" 
-              id="customTimerValue" 
-              placeholder="30m"
-              title="Set your custom timer (1s - 24h)"
-            >
-            <button class="save-custom-btn" id="saveCustomBtn" title="Save">💾</button>
-          </div>
+        <!-- Customize Presets Section -->
+        <div class="setting-row presets-header">
+          <label class="setting-label">⚡ Quick Presets</label>
+          <button class="edit-presets-btn" id="editPresetsBtn" title="Edit presets">✏️ Edit</button>
         </div>
-        <p class="setting-hint">Your saved quick-access timer (e.g., 30s, 5m, 1h 30m)</p>
+        
+        <div class="presets-editor hidden" id="presetsEditor">
+          <div class="presets-editor-grid">
+            <div class="preset-edit-row">
+              <span class="preset-number">1</span>
+              <input type="text" class="preset-input" id="preset1" placeholder="15m">
+            </div>
+            <div class="preset-edit-row">
+              <span class="preset-number">2</span>
+              <input type="text" class="preset-input" id="preset2" placeholder="30m">
+            </div>
+            <div class="preset-edit-row">
+              <span class="preset-number">3</span>
+              <input type="text" class="preset-input" id="preset3" placeholder="45m">
+            </div>
+            <div class="preset-edit-row">
+              <span class="preset-number">4</span>
+              <input type="text" class="preset-input" id="preset4" placeholder="1h">
+            </div>
+            <div class="preset-edit-row">
+              <span class="preset-number">5</span>
+              <input type="text" class="preset-input" id="preset5" placeholder="1h 30m">
+            </div>
+            <div class="preset-edit-row">
+              <span class="preset-number">6</span>
+              <input type="text" class="preset-input" id="preset6" placeholder="2h">
+            </div>
+          </div>
+          <div class="presets-editor-actions">
+            <button class="save-presets-btn" id="savePresetsBtn">💾 Save Presets</button>
+            <button class="reset-presets-btn" id="resetPresetsBtn">↩️ Reset to Default</button>
+          </div>
+          <p class="setting-hint">Format: 30s, 5m, 1h, 1h 30m (1 second to 24 hours)</p>
+        </div>
       </div>
     </section>
 

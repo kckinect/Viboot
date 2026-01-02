@@ -554,6 +554,130 @@ body {
 }
 
 /* ============================================
+   Presets Editor
+   ============================================ */
+
+.presets-header {
+  justify-content: space-between;
+}
+
+.edit-presets-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.edit-presets-btn:hover {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.edit-presets-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.presets-editor {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.presets-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.preset-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-number {
+  width: 20px;
+  height: 20px;
+  background: var(--accent);
+  color: white;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.preset-input {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.preset-input:focus {
+  border-color: var(--accent);
+}
+
+.preset-input::placeholder {
+  color: var(--text-muted);
+}
+
+.presets-editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.save-presets-btn,
+.reset-presets-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.save-presets-btn {
+  background: var(--accent);
+  color: white;
+}
+
+.save-presets-btn:hover {
+  background: var(--accent-hover);
+}
+
+.reset-presets-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.reset-presets-btn:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+}
+
+/* ============================================
    Footer
    ============================================ */
 
