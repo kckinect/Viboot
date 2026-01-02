@@ -440,11 +440,11 @@ body {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 10px 0;
+  padding: 12px 0;
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 16px;
   cursor: pointer;
   transition: color 0.2s;
 }
@@ -474,7 +474,7 @@ body {
 }
 
 .setting-label {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text-primary);
 }
 
@@ -869,4 +869,181 @@ body {
 
 [data-theme="dark"] .theme-icon {
   filter: none;
+}
+
+/* ============================================
+   Last Timer Bar
+   ============================================ */
+
+.last-timer-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: #0d0e12;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.last-timer-icon {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.last-timer-text {
+  opacity: 0.85;
+  font-weight: 400;
+}
+
+#lastSite {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+/* Light mode - use theme colors instead of dark bar */
+:root .last-timer-bar {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+:root #lastSite {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+:root .last-timer-icon {
+  opacity: 0.6;
+}
+
+/* ============================================
+   Footer with Social Links
+   ============================================ */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.footer-text {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.social-links {
+  display: flex;
+  gap: 12px;
+}
+
+.social-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+  text-decoration: none;
+  padding: 6px;
+}
+
+.social-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+/* Dark mode icons - white fill */
+[data-theme="dark"] .social-icon {
+  filter: invert(1) brightness(0.85);
+}
+
+.social-btn:hover {
+  background: var(--accent-light);
+  transform: scale(1.08);
+}
+
+.social-btn:hover .social-icon {
+  opacity: 1;
+}
+
+.social-btn.share-btn {
+  background: var(--accent);
+}
+
+.social-btn.share-btn .social-icon {
+  filter: invert(1);
+  opacity: 1;
+}
+
+.social-btn.share-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* Light mode social buttons */
+:root .social-btn {
+  background: #e2e5ed;
+}
+
+:root .social-icon {
+  filter: brightness(0.3);
+  opacity: 0.8;
+}
+
+:root .social-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+:root .social-btn:hover .social-icon {
+  filter: brightness(0) saturate(100%) invert(26%) sepia(93%) saturate(2842%) hue-rotate(235deg) brightness(92%) contrast(95%);
+  opacity: 1;
+}
+
+:root .social-btn.share-btn {
+  background: var(--accent);
+  color: white;
+}
+
+:root .social-btn.share-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* ============================================
+   Share Toast Notification
+   ============================================ */
+
+.share-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #10b981;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s ease;
+  z-index: 1000;
+}
+
+.share-toast.visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+.share-toast-icon {
+  font-size: 14px;
 }

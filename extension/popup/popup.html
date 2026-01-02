@@ -151,14 +151,46 @@
       </div>
     </section>
 
+    <!-- Last Timer Bar -->
+    <div class="last-timer-bar hidden" id="lastTimerBar">
+      <span class="last-timer-icon">🕐</span>
+      <span class="last-timer-text">
+        Last: <span id="lastTime">--</span> · 
+        <span id="lastSite">--</span> · 
+        <span id="lastDuration">--</span>
+      </span>
+    </div>
+
     <!-- Footer -->
     <footer class="footer">
       <span class="footer-text">v2.0</span>
-      <a href="https://github.com/kckinect/Viboot" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a>
+      <div class="social-links" id="socialLinks">
+        <button class="social-btn share-btn" id="shareBtn" title="Copy share link">
+          <img src="../assets/icons/social/share.svg" alt="Share" class="social-icon">
+        </button>
+        <a href="#" class="social-btn" id="twitterBtn" target="_blank" rel="noopener noreferrer" title="Twitter">
+          <img src="../assets/icons/social/twitter.svg" alt="Twitter" class="social-icon">
+        </a>
+        <a href="#" class="social-btn" id="discordBtn" target="_blank" rel="noopener noreferrer" title="Discord">
+          <img src="../assets/icons/social/discord.svg" alt="Discord" class="social-icon">
+        </a>
+        <a href="#" class="social-btn" id="githubBtn" target="_blank" rel="noopener noreferrer" title="GitHub">
+          <img src="../assets/icons/social/github.svg" alt="GitHub" class="social-icon">
+        </a>
+        <a href="#" class="social-btn" id="emailBtn" title="Email">
+          <img src="../assets/icons/social/email.svg" alt="Email" class="social-icon">
+        </a>
+      </div>
     </footer>
+
+    <!-- Share Toast -->
+    <div class="share-toast hidden" id="shareToast">
+      <span class="share-toast-icon">✓</span>
+      <span class="share-toast-text">Link copied!</span>
+    </div>
 
   </div>
   
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

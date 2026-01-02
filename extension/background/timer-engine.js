@@ -184,6 +184,67 @@ export class SleepTimerEngine {
     }
   }
   
+  /**
+   * Save last timer info for display in popup footer
+   */
+  async saveLastTimerInfo() {
+    if (!this.activeTimer) return;
+    
+    try {
+      let siteName = this.activeTimer.platform || 'Unknown';
+      let site = '';
+      
+      // Try to get actual site from tab
+      try {
+        const tab = await chrome.tabs.get(this.activeTimer.tabId);
+        if (tab?.url) {
+          const url = new URL(tab.url);
+          site = url.hostname;
+          siteName = this.getSiteDisplayName(url.hostname);
+        }
+      } catch (e) {
+        // Tab may not exist, use platform name
+        siteName = this.activeTimer.platform || 'Unknown';
+      }
+      
+      const lastTimer = {
+        endTime: Date.now(),
+        site: site,
+        siteName: siteName,
+        duration: this.activeTimer.duration
+      };
+      
+      await chrome.storage.local.set({ lastTimer });
+      console.log('[Viboot] Saved last timer info:', lastTimer);
+    } catch (error) {
+      console.warn('[Viboot] Failed to save last timer info:', error);
+    }
+  }
+  
+  /**
+   * Get display name for a hostname
+   */
+  getSiteDisplayName(hostname) {
+    const platformNames = {
+      'netflix.com': 'Netflix',
+      'youtube.com': 'YouTube',
+      'disneyplus.com': 'Disney+',
+      'hbomax.com': 'HBO Max',
+      'max.com': 'Max',
+      'amazon.com': 'Prime Video',
+      'primevideo.com': 'Prime Video',
+      'hulu.com': 'Hulu',
+      'crunchyroll.com': 'Crunchyroll',
+      'twitch.tv': 'Twitch'
+    };
+    
+    for (const [domain, name] of Object.entries(platformNames)) {
+      if (hostname.includes(domain)) return name;
+    }
+    
+    return hostname.replace(/^www\./, '').split('.')[0];
+  }
+  
   async onTimerExpire() {
     // Prevent multiple simultaneous expiration calls
     if (this.isExpiring) {
@@ -201,6 +262,9 @@ export class SleepTimerEngine {
     }
     
     const tabId = this.activeTimer.tabId;
+    
+    // Save last timer info before cleanup
+    await this.saveLastTimerInfo();
     
     // Cleanup alarms but keep activeTimer reference until we're done
     if (this.intervalId) {

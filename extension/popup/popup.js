@@ -3,6 +3,8 @@
  * Handles UI interactions and communicates with background service worker
  */
 
+import { VIBOOT_CONFIG, getSiteDisplayName, getReferralLink, getEnabledSocialLinks } from '../utils/config.js';
+
 // ============================================
 // STATE
 // ============================================
@@ -60,7 +62,21 @@ const elements = {
     document.getElementById('preset4'),
     document.getElementById('preset5'),
     document.getElementById('preset6')
-  ]
+  ],
+  
+  // Last Timer Bar
+  lastTimerBar: document.getElementById('lastTimerBar'),
+  lastTime: document.getElementById('lastTime'),
+  lastSite: document.getElementById('lastSite'),
+  lastDuration: document.getElementById('lastDuration'),
+  
+  // Social Links
+  shareBtn: document.getElementById('shareBtn'),
+  twitterBtn: document.getElementById('twitterBtn'),
+  discordBtn: document.getElementById('discordBtn'),
+  githubBtn: document.getElementById('githubBtn'),
+  emailBtn: document.getElementById('emailBtn'),
+  shareToast: document.getElementById('shareToast')
 };
 
 // ============================================
@@ -83,6 +99,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Get current timer status
     await refreshTimerStatus();
+    
+    // Load last timer info
+    await loadLastTimerInfo();
+    
+    // Setup social links
+    setupSocialLinks();
     
     // Set up event listeners
     setupEventListeners();
@@ -741,6 +763,158 @@ function hideInputError() {
 
 // Note: Message handling removed - popup uses polling via startLocalUpdates
 // This prevents race conditions when multiple popups are open
+
+// ============================================
+// LAST TIMER INFO
+// ============================================
+
+async function loadLastTimerInfo() {
+  try {
+    const result = await chrome.storage.local.get('lastTimer');
+    const lastTimer = result.lastTimer;
+    
+    if (!lastTimer || !lastTimer.endTime) {
+      elements.lastTimerBar?.classList.add('hidden');
+      return;
+    }
+    
+    // Format time ago
+    const timeAgo = formatTimeAgo(lastTimer.endTime);
+    const siteName = lastTimer.siteName || getSiteDisplayName(lastTimer.site);
+    const duration = formatDurationMinutes(lastTimer.duration);
+    
+    if (elements.lastTime) elements.lastTime.textContent = timeAgo;
+    if (elements.lastSite) elements.lastSite.textContent = siteName;
+    if (elements.lastDuration) elements.lastDuration.textContent = duration;
+    
+    elements.lastTimerBar?.classList.remove('hidden');
+  } catch (error) {
+    console.warn('[Viboot] Failed to load last timer info:', error);
+    elements.lastTimerBar?.classList.add('hidden');
+  }
+}
+
+function formatTimeAgo(timestamp) {
+  const now = Date.now();
+  const diff = now - timestamp;
+  
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 2) {
+    const date = new Date(timestamp);
+    return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  if (days < 7) return `${days} days ago`;
+  
+  const date = new Date(timestamp);
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function formatDurationMinutes(seconds) {
+  if (!seconds) return '--';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins}min`;
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+  return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+}
+
+// ============================================
+// SOCIAL LINKS & SHARING
+// ============================================
+
+async function setupSocialLinks() {
+  const social = VIBOOT_CONFIG.social;
+  
+  // Get or generate referral code
+  let referralCode = await getReferralCode();
+  
+  // Setup Twitter button
+  if (elements.twitterBtn && social.twitter.enabled) {
+    const shareText = VIBOOT_CONFIG.referral.shareMessages.twitter;
+    const shareUrl = getReferralLink(referralCode);
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
+    elements.twitterBtn.href = twitterUrl;
+  } else if (elements.twitterBtn) {
+    elements.twitterBtn.style.display = 'none';
+  }
+  
+  // Setup Discord button
+  if (elements.discordBtn && social.discord.enabled) {
+    elements.discordBtn.href = social.discord.url;
+  } else if (elements.discordBtn) {
+    elements.discordBtn.style.display = 'none';
+  }
+  
+  // Setup GitHub button
+  if (elements.githubBtn && social.github.enabled) {
+    elements.githubBtn.href = social.github.url;
+  } else if (elements.githubBtn) {
+    elements.githubBtn.style.display = 'none';
+  }
+  
+  // Setup Email button
+  if (elements.emailBtn && social.email.enabled) {
+    const emailMsg = VIBOOT_CONFIG.referral.shareMessages.email;
+    const shareUrl = getReferralLink(referralCode);
+    const mailtoUrl = `mailto:?subject=${encodeURIComponent(emailMsg.subject)}&body=${encodeURIComponent(emailMsg.body + '\n\n' + shareUrl)}`;
+    elements.emailBtn.href = mailtoUrl;
+  } else if (elements.emailBtn) {
+    elements.emailBtn.style.display = 'none';
+  }
+  
+  // Setup Share button (copy link)
+  if (elements.shareBtn) {
+    elements.shareBtn.addEventListener('click', async () => {
+      const shareUrl = getReferralLink(referralCode);
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showShareToast();
+      } catch (e) {
+        console.error('[Viboot] Failed to copy:', e);
+      }
+    });
+  }
+}
+
+async function getReferralCode() {
+  try {
+    const result = await chrome.storage.local.get('referralCode');
+    if (result.referralCode) return result.referralCode;
+    
+    // Generate new 6-character code
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    await chrome.storage.local.set({ referralCode: code });
+    return code;
+  } catch (error) {
+    console.warn('[Viboot] Failed to get/generate referral code:', error);
+    return '';
+  }
+}
+
+function showShareToast() {
+  if (!elements.shareToast) return;
+  
+  elements.shareToast.classList.remove('hidden');
+  elements.shareToast.classList.add('visible');
+  
+  setTimeout(() => {
+    elements.shareToast.classList.remove('visible');
+    setTimeout(() => {
+      elements.shareToast.classList.add('hidden');
+    }, 300);
+  }, 2000);
+}
 
 // ============================================
 // CLEANUP
