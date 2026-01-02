@@ -361,14 +361,30 @@ if (!window.PlatformStrategies) {
 // ============================================================================
 
 if (!window.vibootVideoCache) {
-  window.vibootVideoCache = { element: null, timestamp: null, maxAge: 5000 };
+  window.vibootVideoCache = { 
+    element: null, 
+    timestamp: null, 
+    maxAge: 10000,  // 10 seconds cache (reduced DOM queries)
+    lastCheck: 0
+  };
 }
 
 if (!window.getCachedVideo) {
   window.getCachedVideo = function() {
     const cache = window.vibootVideoCache;
-    if (cache.element && cache.timestamp && (Date.now() - cache.timestamp) < cache.maxAge) {
-      if (cache.element.parentElement) return cache.element;
+    const now = Date.now();
+    
+    // Throttle cache checks to once per 100ms
+    if (now - cache.lastCheck < 100) {
+      return cache.element;
+    }
+    cache.lastCheck = now;
+    
+    if (cache.element && cache.timestamp && (now - cache.timestamp) < cache.maxAge) {
+      // Verify element is still in DOM and playing
+      if (cache.element.parentElement && !cache.element.ended) {
+        return cache.element;
+      }
     }
     cache.element = null;
     cache.timestamp = null;
@@ -732,7 +748,21 @@ function createOverlay() {
   requestAnimationFrame(() => vibootOverlay.classList.add('visible'));
 }
 
+// Throttle overlay updates to reduce DOM operations
+let lastOverlayUpdate = 0;
+let lastOverlayRemaining = -1;
+
 function updateOverlay(remaining) {
+  // Skip if same value (no visual change needed)
+  if (remaining === lastOverlayRemaining) return;
+  
+  // Throttle to max 1 update per 500ms (timer shows seconds, but we update twice per second max)
+  const now = Date.now();
+  if (now - lastOverlayUpdate < 500 && Math.abs(remaining - lastOverlayRemaining) < 2) return;
+  
+  lastOverlayUpdate = now;
+  lastOverlayRemaining = remaining;
+  
   if (!vibootOverlay) createOverlay();
   
   const timeEl = document.getElementById('vibootTime');
@@ -740,9 +770,21 @@ function updateOverlay(remaining) {
     timeEl.textContent = window.VibootUtils.formatCountdown(remaining);
   }
 
-  vibootOverlay.classList.remove('warning', 'critical');
-  if (remaining <= 60) vibootOverlay.classList.add('critical');
-  else if (remaining <= 300) vibootOverlay.classList.add('warning');
+  // Only update classes when threshold is crossed
+  const wasWarning = vibootOverlay.classList.contains('warning');
+  const wasCritical = vibootOverlay.classList.contains('critical');
+  const shouldBeWarning = remaining <= 300 && remaining > 60;
+  const shouldBeCritical = remaining <= 60;
+  
+  if (shouldBeCritical && !wasCritical) {
+    vibootOverlay.classList.remove('warning');
+    vibootOverlay.classList.add('critical');
+  } else if (shouldBeWarning && !wasWarning) {
+    vibootOverlay.classList.remove('critical');
+    vibootOverlay.classList.add('warning');
+  } else if (!shouldBeWarning && !shouldBeCritical && (wasWarning || wasCritical)) {
+    vibootOverlay.classList.remove('warning', 'critical');
+  }
 }
 
 function showOverlay() {
