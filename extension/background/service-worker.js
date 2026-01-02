@@ -7,15 +7,21 @@ import { timerEngine } from './timer-engine.js';
 
 // Run immediately when extension is installed/updated
 chrome.runtime.onInstalled.addListener(async () => {
-  console.log("[Viboot] Extension installed. Starting initial setup...");
-  
-  // Sync remote config
-  await ConfigManager.syncConfig();
-  
-  // Schedule daily config sync (every 24 hours)
-  chrome.alarms.create('dailyConfigSync', { periodInMinutes: 1440 });
-  
-  console.log("[Viboot] Setup complete.");
+  try {
+    console.log("[Viboot] Extension installed. Starting initial setup...");
+    
+    // Sync remote config (non-blocking)
+    ConfigManager.syncConfig().catch(e => 
+      console.warn('[Viboot] Initial config sync failed:', e.message)
+    );
+    
+    // Schedule daily config sync (every 24 hours)
+    await chrome.alarms.create('dailyConfigSync', { periodInMinutes: 1440 });
+    
+    console.log("[Viboot] Setup complete.");
+  } catch (error) {
+    console.error('[Viboot] Installation error:', error);
+  }
 });
 
 // Restore timer when service worker starts (browser restart)
@@ -26,7 +32,11 @@ chrome.runtime.onStartup.addListener(async () => {
 
 // Also restore on service worker wake-up
 (async () => {
-  await timerEngine.restoreTimer();
+  try {
+    await timerEngine.restoreTimer();
+  } catch (error) {
+    console.error('[Viboot] Failed to restore timer on wake:', error);
+  }
 })();
 
 // ============================================
@@ -34,12 +44,16 @@ chrome.runtime.onStartup.addListener(async () => {
 // ============================================
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'dailyConfigSync') {
-    console.log("[Viboot] Running daily config sync...");
-    await ConfigManager.syncConfig();
-  } else if (alarm.name.startsWith('viboot')) {
-    // Handle timer alarms (vibootTimerTick, vibootTimerExpiry)
-    await timerEngine.handleAlarm(alarm.name);
+  try {
+    if (alarm.name === 'dailyConfigSync') {
+      console.log("[Viboot] Running daily config sync...");
+      await ConfigManager.syncConfig();
+    } else if (alarm.name.startsWith('viboot')) {
+      // Handle timer alarms (vibootTimerTick, vibootTimerExpiry)
+      await timerEngine.handleAlarm(alarm.name);
+    }
+  } catch (error) {
+    console.error('[Viboot] Alarm handler error:', error);
   }
 });
 

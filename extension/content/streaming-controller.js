@@ -397,51 +397,64 @@ if (!window.getStrategy) {
 
 if (!window.findVideoElement) {
   window.findVideoElement = async function(maxRetries = 5) {
-    const cached = window.getCachedVideo();
-    if (cached) return cached;
+    try {
+      const cached = window.getCachedVideo();
+      if (cached) return cached;
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 500));
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 500));
 
-      // Direct video selector
-      let video = document.querySelector('video');
-      if (video && isVideoVisible(video)) return window.cacheVideo(video);
-
-      // Platform-specific selectors
-      const strategy = window.getStrategy();
-      for (const sel of strategy.selectors || []) {
         try {
-          const v = document.querySelector(sel);
-          if (v && isVideoVisible(v)) return window.cacheVideo(v);
-        } catch (e) { /* invalid selector */ }
+          // Direct video selector
+          let video = document.querySelector('video');
+          if (video && isVideoVisible(video)) return window.cacheVideo(video);
+
+          // Platform-specific selectors
+          const strategy = window.getStrategy();
+          for (const sel of strategy.selectors || []) {
+            try {
+              const v = document.querySelector(sel);
+              if (v && isVideoVisible(v)) return window.cacheVideo(v);
+            } catch (e) { /* invalid selector */ }
+          }
+
+          // Search iframes
+          video = findVideoInIframes();
+          if (video) return window.cacheVideo(video);
+
+          // Search shadow DOM
+          video = findVideoInShadowDOM();
+          if (video) return window.cacheVideo(video);
+
+          // Last resort: any video element
+          const allVideos = document.querySelectorAll('video');
+          for (const v of allVideos) {
+            if (v.videoWidth > 0 || v.readyState >= 1) return window.cacheVideo(v);
+          }
+          if (allVideos.length > 0) return window.cacheVideo(allVideos[0]);
+        } catch (innerError) {
+          console.warn('[Viboot] Video search attempt failed:', innerError.message);
+        }
       }
 
-      // Search iframes
-      video = findVideoInIframes();
-      if (video) return window.cacheVideo(video);
-
-      // Search shadow DOM
-      video = findVideoInShadowDOM();
-      if (video) return window.cacheVideo(video);
-
-      // Last resort: any video element
-      const allVideos = document.querySelectorAll('video');
-      for (const v of allVideos) {
-        if (v.videoWidth > 0 || v.readyState >= 1) return window.cacheVideo(v);
-      }
-      if (allVideos.length > 0) return window.cacheVideo(allVideos[0]);
+      return null;
+    } catch (error) {
+      console.error('[Viboot] findVideoElement failed:', error);
+      return null;
     }
-
-    return null;
   };
 }
 
 function isVideoVisible(video) {
-  if (!video) return false;
-  if (video.videoWidth > 0 && video.videoHeight > 0) return true;
-  if (video.readyState >= 1) return true;
-  if (video.offsetParent === null && video.offsetHeight === 0) return false;
-  return true;
+  try {
+    if (!video) return false;
+    if (video.videoWidth > 0 && video.videoHeight > 0) return true;
+    if (video.readyState >= 1) return true;
+    if (video.offsetParent === null && video.offsetHeight === 0) return false;
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 function findVideoInIframes() {

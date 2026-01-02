@@ -59,26 +59,30 @@ const elements = {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Load theme
-  loadTheme();
-  
-  // Load settings
-  await loadSettings();
-  
-  // Load custom timer preset
-  await loadCustomTimer();
-  
-  // Detect platform
-  await detectPlatform();
-  
-  // Get current timer status
-  await refreshTimerStatus();
-  
-  // Set up event listeners
-  setupEventListeners();
-  
-  // Listen for timer updates from background
-  chrome.runtime.onMessage.addListener(handleMessage);
+  try {
+    // Load theme
+    loadTheme();
+    
+    // Load settings (non-blocking)
+    loadSettings().catch(e => console.warn('[Viboot] Settings load failed:', e));
+    
+    // Load custom timer preset (non-blocking)
+    loadCustomTimer().catch(e => console.warn('[Viboot] Custom timer load failed:', e));
+    
+    // Detect platform
+    await detectPlatform();
+    
+    // Get current timer status
+    await refreshTimerStatus();
+    
+    // Set up event listeners
+    setupEventListeners();
+    
+    // Listen for timer updates from background
+    chrome.runtime.onMessage.addListener(handleMessage);
+  } catch (error) {
+    console.error('[Viboot] Popup initialization failed:', error);
+  }
 });
 
 // ============================================
@@ -221,12 +225,17 @@ async function stopTimer() {
 
 async function extendTimer(minutes = 10) {
   try {
+    if (!currentTimer) {
+      console.warn('[Viboot] No active timer to extend');
+      return;
+    }
+    
     const response = await chrome.runtime.sendMessage({
       action: 'extendTimer',
       minutes: minutes
     });
     
-    if (response.success) {
+    if (response?.success) {
       currentTimer.remaining += minutes * 60;
       currentTimer.duration += minutes * 60;
       updateTimerDisplay();
