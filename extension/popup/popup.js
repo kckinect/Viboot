@@ -537,6 +537,9 @@ async function savePresets() {
     currentPresets = newPresets;
     renderPresetButtons();
     
+    // Refresh context menus with new presets
+    chrome.runtime.sendMessage({ action: 'refreshContextMenus' }).catch(() => {});
+    
     // Show success feedback
     elements.savePresetsBtn.textContent = '✓ Saved!';
     elements.savePresetsBtn.style.background = 'var(--success)';
@@ -555,6 +558,9 @@ async function resetPresets() {
     currentPresets = [...DEFAULT_PRESETS];
     renderPresetButtons();
     populatePresetEditor();
+    
+    // Refresh context menus with default presets
+    chrome.runtime.sendMessage({ action: 'refreshContextMenus' }).catch(() => {});
     
     // Show reset feedback
     elements.resetPresetsBtn.textContent = '✓ Reset!';

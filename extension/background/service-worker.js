@@ -5,10 +5,131 @@ import { timerEngine } from './timer-engine.js';
 // INSTALLATION & STARTUP
 // ============================================
 
+// Default presets in seconds
+const DEFAULT_PRESETS = [
+  15 * 60,   // 15m
+  30 * 60,   // 30m
+  45 * 60,   // 45m
+  60 * 60,   // 1h
+  90 * 60,   // 1h 30m
+  120 * 60   // 2h
+];
+
+// Format seconds to display string
+function formatSecondsToDisplay(totalSeconds) {
+  if (totalSeconds < 60) return totalSeconds + 's';
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  let result = '';
+  if (hours > 0) result += hours + 'h ';
+  if (minutes > 0) result += minutes + 'm';
+  if (seconds > 0 && hours === 0) result += (minutes > 0 ? ' ' : '') + seconds + 's';
+  return result.trim() || '0s';
+}
+
+// Create context menu items
+async function createContextMenus() {
+  // Remove existing menus first
+  await chrome.contextMenus.removeAll();
+  
+  // Create parent menu
+  chrome.contextMenus.create({
+    id: 'viboot-parent',
+    title: '⏱️ Set Timer',
+    contexts: ['page', 'video']
+  });
+  
+  // Get user's custom presets or use defaults
+  const result = await chrome.storage.local.get('timerPresets');
+  const presets = result.timerPresets || DEFAULT_PRESETS;
+  
+  // Create menu items for each preset
+  presets.forEach((seconds, index) => {
+    chrome.contextMenus.create({
+      id: `viboot-preset-${index}`,
+      parentId: 'viboot-parent',
+      title: formatSecondsToDisplay(seconds),
+      contexts: ['page', 'video']
+    });
+  });
+  
+  // Add separator
+  chrome.contextMenus.create({
+    id: 'viboot-separator',
+    parentId: 'viboot-parent',
+    type: 'separator',
+    contexts: ['page', 'video']
+  });
+  
+  // Add custom duration option
+  chrome.contextMenus.create({
+    id: 'viboot-custom',
+    parentId: 'viboot-parent',
+    title: '⚙️ Custom Duration...',
+    contexts: ['page', 'video']
+  });
+}
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (!info.menuItemId.toString().startsWith('viboot-')) return;
+  
+  const menuId = info.menuItemId.toString();
+  
+  if (menuId === 'viboot-custom') {
+    // Inject prompt for custom duration
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          if (window.showCustomTimerPrompt) {
+            window.showCustomTimerPrompt();
+          } else {
+            const duration = prompt('Enter timer duration (e.g., 30s, 5m, 1h 30m):');
+            if (duration) {
+              chrome.runtime.sendMessage({ action: 'startTimer', duration: duration });
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('[Viboot] Failed to show custom prompt:', error);
+    }
+    return;
+  }
+  
+  if (menuId.startsWith('viboot-preset-')) {
+    const index = parseInt(menuId.replace('viboot-preset-', ''), 10);
+    const result = await chrome.storage.local.get('timerPresets');
+    const presets = result.timerPresets || DEFAULT_PRESETS;
+    const seconds = presets[index];
+    
+    if (seconds) {
+      const minutes = seconds / 60;
+      await timerEngine.startTimer(minutes, tab.id);
+      
+      // Show notification
+      const settings = (await chrome.storage.local.get('settings')).settings || {};
+      if (settings.showNotifications !== false) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: chrome.runtime.getURL('assets/icons/android-chrome-192x192.png'),
+          title: 'Viboot Timer Started',
+          message: `Timer set for ${formatSecondsToDisplay(seconds)}`
+        });
+      }
+    }
+  }
+});
+
 // Run immediately when extension is installed/updated
 chrome.runtime.onInstalled.addListener(async () => {
   try {
     console.log("[Viboot] Extension installed. Starting initial setup...");
+    
+    // Create context menus
+    await createContextMenus();
     
     // Sync remote config (non-blocking)
     ConfigManager.syncConfig().catch(e => 
@@ -141,6 +262,11 @@ async function handleMessage(message, sender) {
     case 'saveSettings': {
       const { settings } = message;
       await chrome.storage.local.set({ settings });
+      return { success: true };
+    }
+    
+    case 'refreshContextMenus': {
+      await createContextMenus();
       return { success: true };
     }
     
