@@ -10,7 +10,7 @@ const DEFAULT_CONFIG = {
 };
 
 // TODO: REPLACE THIS URL AFTER DEPLOYING PHASE 1
-const API_URL = "https://viboot-api.onrender.com/api/selectors";
+const API_URL = "https://viboot.onrender.com/api/selectors";
 
 export class ConfigManager {
   static async syncConfig() {

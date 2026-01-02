@@ -37,6 +37,9 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'dailyConfigSync') {
     console.log("[Viboot] Running daily config sync...");
     await ConfigManager.syncConfig();
+  } else if (alarm.name.startsWith('viboot')) {
+    // Handle timer alarms (vibootTimerTick, vibootTimerExpiry)
+    await timerEngine.handleAlarm(alarm.name);
   }
 });
 

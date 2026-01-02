@@ -1,192 +1,235 @@
 /**
- * Viboot Timer Engine
+ * Viboot Timer Engine v2
  * Core timer logic that runs in background service worker
+ * 
+ * Key improvements:
+ * - Uses chrome.alarms for MV3 service worker compatibility (survives SW sleep)
+ * - Handles tab close gracefully
+ * - Better error handling throughout
+ * - Optimized storage writes
  */
 
 export class SleepTimerEngine {
   constructor() {
     this.activeTimer = null;
     this.intervalId = null;
+    this.lastBroadcast = 0;
+    
+    // Set up tab close listener
+    this.setupTabListener();
+  }
+  
+  /**
+   * Listen for tab close events
+   */
+  setupTabListener() {
+    chrome.tabs.onRemoved.addListener((tabId) => {
+      if (this.activeTimer && this.activeTimer.tabId === tabId) {
+        console.log('[Viboot] Timer tab was closed, stopping timer');
+        this.stopTimer();
+      }
+    });
   }
   
   /**
    * Start a new sleep timer
-   * @param {number} minutes - Timer duration in minutes (supports decimals, e.g., 0.5 for 30 seconds)
-   * @param {number} tabId - Chrome tab ID
    */
   async startTimer(minutes, tabId) {
-    // Convert to seconds (supports fractional minutes for second-level precision)
-    const durationSeconds = Math.round(minutes * 60);
-    
-    console.log(`[Viboot] Starting timer for ${durationSeconds} seconds (${minutes} min) on tab ${tabId}`);
-    
-    // Validate input: 1 second to 24 hours
-    if (durationSeconds < 1 || durationSeconds > 86400) {
-      throw new Error('Timer must be between 1 second and 24 hours');
-    }
-    
-    // Stop any existing timer
-    await this.stopTimer();
-    
-    // Get tab info
-    const tab = await chrome.tabs.get(tabId);
-    const platform = this.detectPlatform(tab.url);
-    
-    // Create timer state
-    this.activeTimer = {
-      tabId: tabId,
-      platform: platform,
-      duration: durationSeconds,
-      remaining: durationSeconds,
-      startTime: Date.now(),
-      status: 'active'
-    };
-    
-    // Save to storage (persist across browser restarts)
-    await chrome.storage.local.set({ activeTimer: this.activeTimer });
-    
-    // Notify the content script that a new timer has started (resets pause flag)
     try {
-      await chrome.tabs.sendMessage(tabId, { action: 'timerStarted' });
-    } catch (e) {
-      // Content script might not be loaded yet, that's ok
-      console.log('[Viboot] Could not notify content script of timer start');
+      const durationSeconds = Math.round(minutes * 60);
+      
+      console.log('[Viboot] Starting timer for ' + durationSeconds + 's on tab ' + tabId);
+      
+      if (durationSeconds < 1 || durationSeconds > 86400) {
+        throw new Error('Timer must be between 1 second and 24 hours');
+      }
+      
+      let tab;
+      try {
+        tab = await chrome.tabs.get(tabId);
+      } catch (e) {
+        throw new Error('Tab not found or inaccessible');
+      }
+      
+      await this.stopTimer();
+      
+      const platform = this.detectPlatform(tab.url);
+      
+      this.activeTimer = {
+        tabId: tabId,
+        platform: platform,
+        duration: durationSeconds,
+        remaining: durationSeconds,
+        startTime: Date.now(),
+        status: 'active'
+      };
+      
+      await chrome.storage.local.set({ activeTimer: this.activeTimer });
+      
+      // Use chrome.alarms for SW sleep resilience
+      await chrome.alarms.create('vibootTimerTick', { periodInMinutes: 0.5 });
+      await chrome.alarms.create('vibootTimerExpiry', { 
+        when: Date.now() + (durationSeconds * 1000) 
+      });
+      
+      this.notifyContentScript(tabId, { action: 'timerStarted' });
+      this.startCountdown();
+      this.updateBadge();
+      
+      return this.activeTimer;
+      
+    } catch (error) {
+      console.error('[Viboot] Failed to start timer:', error);
+      throw error;
     }
-    
-    // Start countdown
-    this.startCountdown();
-    
-    // Update badge
-    this.updateBadge();
-    
-    return this.activeTimer;
   }
   
-  /**
-   * Main countdown loop
-   */
   startCountdown() {
+    if (this.intervalId) clearInterval(this.intervalId);
+    
     this.intervalId = setInterval(async () => {
       if (!this.activeTimer) {
         clearInterval(this.intervalId);
+        this.intervalId = null;
         return;
       }
       
-      // Decrement remaining time
       this.activeTimer.remaining--;
       
-      // Update storage every 10 seconds (reduce write frequency)
       if (this.activeTimer.remaining % 10 === 0) {
-        await chrome.storage.local.set({ activeTimer: this.activeTimer });
+        await this.saveTimerState();
       }
       
-      // Update badge every minute
       if (this.activeTimer.remaining % 60 === 0) {
         this.updateBadge();
       }
       
-      // Check if timer expired
       if (this.activeTimer.remaining <= 0) {
         await this.onTimerExpire();
+        return;
       }
       
-      // Send update to popup (if open)
       this.broadcastTimerUpdate();
-      
-    }, 1000); // Tick every second
+    }, 1000);
   }
   
-  /**
-   * Timer expiration handler
-   */
+  async handleAlarm(alarmName) {
+    if (alarmName === 'vibootTimerTick') {
+      await this.syncTimerState();
+    } else if (alarmName === 'vibootTimerExpiry') {
+      if (this.activeTimer && this.activeTimer.remaining <= 0) {
+        await this.onTimerExpire();
+      }
+    }
+  }
+  
+  async syncTimerState() {
+    const result = await chrome.storage.local.get('activeTimer');
+    
+    if (!result.activeTimer || result.activeTimer.status !== 'active') {
+      await this.cleanup();
+      return;
+    }
+    
+    const saved = result.activeTimer;
+    const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
+    const remaining = saved.duration - elapsed;
+    
+    if (remaining <= 0) {
+      this.activeTimer = saved;
+      this.activeTimer.remaining = 0;
+      await this.onTimerExpire();
+    } else {
+      this.activeTimer = { ...saved, remaining: remaining };
+      if (!this.intervalId) this.startCountdown();
+      this.updateBadge();
+      this.broadcastTimerUpdate();
+    }
+  }
+  
+  async saveTimerState() {
+    if (!this.activeTimer) return;
+    try {
+      await chrome.storage.local.set({ activeTimer: this.activeTimer });
+    } catch (error) {
+      console.error('[Viboot] Failed to save timer state:', error);
+    }
+  }
+  
   async onTimerExpire() {
     console.log('[Viboot] Timer expired! Pausing video...');
     
-    // Stop countdown
-    clearInterval(this.intervalId);
-    this.intervalId = null;
+    this.cleanup();
+    if (!this.activeTimer) return;
     
     const tabId = this.activeTimer.tabId;
     
-    // Pause video on the tab
-    await this.pauseVideo(tabId);
+    try {
+      await chrome.tabs.get(tabId);
+    } catch (e) {
+      console.log('[Viboot] Timer tab no longer exists');
+      await this.finalCleanup();
+      return;
+    }
     
-    // Show notification
+    await this.pauseVideo(tabId);
     await this.showExpiryNotification();
     
-    // Hide overlay after a short delay (so user sees it hit 0)
-    setTimeout(async () => {
-      try {
-        await chrome.tabs.sendMessage(tabId, { action: 'destroyOverlay' });
-      } catch (e) {
-        // Tab might be closed
-      }
+    setTimeout(() => {
+      this.notifyContentScript(tabId, { action: 'destroyOverlay' });
     }, 2000);
     
-    // Update timer status
-    this.activeTimer.status = 'expired';
-    await chrome.storage.local.set({ activeTimer: this.activeTimer });
-    
-    // Clear badge
-    chrome.action.setBadgeText({ text: '' });
-    
-    // Clean up
-    this.activeTimer = null;
-    await chrome.storage.local.remove('activeTimer');
+    await this.finalCleanup();
   }
   
-  /**
-   * Stop/cancel active timer
-   */
   async stopTimer() {
+    console.log('[Viboot] Stopping timer');
+    const tabId = this.activeTimer?.tabId;
+    this.cleanup();
+    if (tabId) this.notifyContentScript(tabId, { action: 'destroyOverlay' });
+    await this.finalCleanup();
+  }
+  
+  cleanup() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    
-    if (this.activeTimer) {
-      const tabId = this.activeTimer.tabId;
-      console.log('[Viboot] Timer stopped');
-      
-      // Notify content script to hide overlay
-      try {
-        await chrome.tabs.sendMessage(tabId, { action: 'destroyOverlay' });
-      } catch (e) {
-        // Tab might be closed
-      }
-      
-      this.activeTimer = null;
+    chrome.alarms.clear('vibootTimerTick');
+    chrome.alarms.clear('vibootTimerExpiry');
+  }
+  
+  async finalCleanup() {
+    this.activeTimer = null;
+    try {
       await chrome.storage.local.remove('activeTimer');
-      chrome.action.setBadgeText({ text: '' });
+      await chrome.action.setBadgeText({ text: '' });
+    } catch (error) {
+      console.error('[Viboot] Cleanup error:', error);
     }
   }
   
-  /**
-   * Extend timer by X minutes
-   */
   async extendTimer(additionalMinutes) {
-    if (!this.activeTimer) {
-      throw new Error('No active timer to extend');
-    }
+    if (!this.activeTimer) throw new Error('No active timer to extend');
     
-    this.activeTimer.remaining += additionalMinutes * 60;
-    this.activeTimer.duration += additionalMinutes * 60;
+    const additionalSeconds = Math.round(additionalMinutes * 60);
+    this.activeTimer.remaining += additionalSeconds;
+    this.activeTimer.duration += additionalSeconds;
     
-    await chrome.storage.local.set({ activeTimer: this.activeTimer });
+    await chrome.alarms.clear('vibootTimerExpiry');
+    await chrome.alarms.create('vibootTimerExpiry', {
+      when: Date.now() + (this.activeTimer.remaining * 1000)
+    });
+    
+    await this.saveTimerState();
     this.updateBadge();
     
-    console.log(`[Viboot] Timer extended by ${additionalMinutes} minutes`);
-    
+    console.log('[Viboot] Timer extended by ' + additionalMinutes + ' minutes');
     return this.activeTimer;
   }
   
-  /**
-   * Get current timer status
-   */
   getTimerStatus() {
-    if (!this.activeTimer) {
-      return { active: false };
-    }
+    if (!this.activeTimer) return { active: false };
     
     return {
       active: true,
@@ -198,37 +241,21 @@ export class SleepTimerEngine {
     };
   }
   
-  /**
-   * Pause video on target tab
-   */
   async pauseVideo(tabId) {
     try {
-      // Content script is already loaded via manifest, just send message
-      await chrome.tabs.sendMessage(tabId, {
-        action: 'pauseVideo',
-        source: 'sleepTimer'
-      });
-      
+      await chrome.tabs.sendMessage(tabId, { action: 'pauseVideo', source: 'sleepTimer' });
       console.log('[Viboot] Video paused successfully');
-      
     } catch (error) {
       console.error('[Viboot] Failed to pause video:', error);
-      // Fallback: try direct script execution
       await this.pauseVideoFallback(tabId);
     }
   }
   
-  /**
-   * Fallback pause method using direct script execution
-   */
   async pauseVideoFallback(tabId) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tabId },
-        func: () => {
-          const videos = document.querySelectorAll('video');
-          videos.forEach(video => video.pause());
-        }
+        func: () => { document.querySelectorAll('video').forEach(v => v.pause()); }
       });
       console.log('[Viboot] Video paused via fallback');
     } catch (error) {
@@ -236,18 +263,15 @@ export class SleepTimerEngine {
     }
   }
   
-  /**
-   * Show browser notification
-   */
   async showExpiryNotification() {
-    const settings = await this.getSettings();
-    
-    if (!settings.showNotifications) return;
-    
     try {
-      await chrome.notifications.create('timerExpired', {
+      const settings = await this.getSettings();
+      if (!settings.showNotifications) return;
+      
+      await chrome.notifications.create('vibootExpired', {
         type: 'basic',
-        title: '😴 Sleep Timer Expired',
+        iconUrl: '../assets/icons/icon-128.png',
+        title: 'Sleep Timer Expired',
         message: 'Your video has been paused. Sweet dreams!',
         priority: 2
       });
@@ -256,9 +280,6 @@ export class SleepTimerEngine {
     }
   }
   
-  /**
-   * Update extension badge with remaining time
-   */
   updateBadge() {
     if (!this.activeTimer) {
       chrome.action.setBadgeText({ text: '' });
@@ -266,110 +287,97 @@ export class SleepTimerEngine {
     }
     
     const minutes = Math.ceil(this.activeTimer.remaining / 60);
-    let badgeText;
-    
-    if (minutes > 99) {
-      badgeText = '99+';
-    } else if (minutes > 0) {
-      badgeText = String(minutes);
-    } else {
-      badgeText = '<1';
-    }
+    let badgeText = minutes > 99 ? '99+' : minutes > 0 ? String(minutes) : '<1';
     
     chrome.action.setBadgeText({ text: badgeText });
-    chrome.action.setBadgeBackgroundColor({ color: '#6366f1' }); // Indigo
+    chrome.action.setBadgeBackgroundColor({ color: '#6366f1' });
   }
   
-  /**
-   * Broadcast timer update to popup
-   */
   broadcastTimerUpdate() {
-    // Update popup
+    const now = Date.now();
+    if (now - this.lastBroadcast < 900) return;
+    this.lastBroadcast = now;
+    
     chrome.runtime.sendMessage({
       action: 'timerUpdate',
       status: this.getTimerStatus()
-    }).catch(() => {
-      // Popup not open, ignore
-    });
+    }).catch(() => {});
     
-    // Update overlay on the target tab
     if (this.activeTimer?.tabId) {
-      chrome.tabs.sendMessage(this.activeTimer.tabId, {
+      this.notifyContentScript(this.activeTimer.tabId, {
         action: 'updateOverlay',
         remaining: this.activeTimer.remaining
-      }).catch(() => {
-        // Tab might not be accessible
       });
     }
   }
   
-  /**
-   * Detect platform from URL
-   */
+  notifyContentScript(tabId, message) {
+    chrome.tabs.sendMessage(tabId, message).catch(() => {});
+  }
+  
   detectPlatform(url) {
     try {
       const hostname = new URL(url).hostname;
-      
       if (hostname.includes('netflix.com')) return 'netflix';
       if (hostname.includes('primevideo.com') || hostname.includes('amazon.com')) return 'amazon';
       if (hostname.includes('disneyplus.com')) return 'disney';
       if (hostname.includes('youtube.com')) return 'youtube';
       if (hostname.includes('crunchyroll.com')) return 'crunchyroll';
       if (hostname.includes('hbomax.com') || hostname.includes('max.com')) return 'hbo';
-      
+      if (hostname.includes('twitch.tv')) return 'twitch';
+      if (hostname.includes('hulu.com')) return 'hulu';
       return 'generic';
-    } catch {
-      return 'generic';
-    }
+    } catch { return 'generic'; }
   }
   
-  /**
-   * Get user settings
-   */
   async getSettings() {
-    const result = await chrome.storage.local.get('settings');
-    return result.settings || {
-      showNotifications: true,
-      showOverlay: true,
-      defaultTimer: 30
-    };
+    try {
+      const result = await chrome.storage.local.get('settings');
+      return result.settings || { showNotifications: true, showOverlay: true, defaultTimer: 30 };
+    } catch { return { showNotifications: true, showOverlay: true, defaultTimer: 30 }; }
   }
   
-  /**
-   * Restore timer on browser restart
-   */
   async restoreTimer() {
-    const result = await chrome.storage.local.get('activeTimer');
-    
-    if (!result.activeTimer || result.activeTimer.status === 'expired') {
-      return null;
-    }
-    
-    const savedTimer = result.activeTimer;
-    
-    // Calculate elapsed time since timer was saved
-    const elapsedSeconds = Math.floor((Date.now() - savedTimer.startTime) / 1000);
-    const remainingSeconds = savedTimer.duration - elapsedSeconds;
-    
-    if (remainingSeconds > 0) {
-      // Timer still valid, restore it
-      this.activeTimer = {
-        ...savedTimer,
-        remaining: remainingSeconds
-      };
+    try {
+      const result = await chrome.storage.local.get('activeTimer');
+      
+      if (!result.activeTimer || result.activeTimer.status !== 'active') return null;
+      
+      const saved = result.activeTimer;
+      
+      try {
+        await chrome.tabs.get(saved.tabId);
+      } catch (e) {
+        console.log('[Viboot] Timer tab no longer exists');
+        await this.finalCleanup();
+        return null;
+      }
+      
+      const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
+      const remaining = saved.duration - elapsed;
+      
+      if (remaining <= 0) {
+        this.activeTimer = { ...saved, remaining: 0 };
+        await this.onTimerExpire();
+        return null;
+      }
+      
+      this.activeTimer = { ...saved, remaining: remaining };
+      
+      await chrome.alarms.create('vibootTimerTick', { periodInMinutes: 0.5 });
+      await chrome.alarms.create('vibootTimerExpiry', { when: Date.now() + (remaining * 1000) });
       
       this.startCountdown();
       this.updateBadge();
       
-      console.log(`[Viboot] Timer restored: ${Math.ceil(remainingSeconds / 60)} minutes remaining`);
+      console.log('[Viboot] Timer restored: ' + Math.ceil(remaining / 60) + ' min remaining');
       return this.activeTimer;
-    } else {
-      // Timer expired while browser was closed
-      await chrome.storage.local.remove('activeTimer');
+      
+    } catch (error) {
+      console.error('[Viboot] Failed to restore timer:', error);
       return null;
     }
   }
 }
 
-// Export singleton instance
 export const timerEngine = new SleepTimerEngine();
