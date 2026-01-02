@@ -159,25 +159,38 @@ export class SleepTimerEngine {
   async onTimerExpire() {
     console.log('[Viboot] Timer expired! Pausing video...');
     
-    this.cleanup();
-    if (!this.activeTimer) return;
-    
-    const tabId = this.activeTimer.tabId;
-    
-    try {
-      await chrome.tabs.get(tabId);
-    } catch (e) {
-      console.log('[Viboot] Timer tab no longer exists');
+    if (!this.activeTimer) {
       await this.finalCleanup();
       return;
     }
     
-    await this.pauseVideo(tabId);
-    await this.showExpiryNotification();
+    const tabId = this.activeTimer.tabId;
     
-    setTimeout(() => {
-      this.notifyContentScript(tabId, { action: 'destroyOverlay' });
-    }, 2000);
+    // Cleanup alarms but keep activeTimer reference until we're done
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    chrome.alarms.clear('vibootTimerTick');
+    chrome.alarms.clear('vibootTimerExpiry');
+    
+    try {
+      // Check if tab exists in this browser
+      await chrome.tabs.get(tabId);
+      
+      // Tab exists, pause video
+      await this.pauseVideo(tabId);
+      await this.showExpiryNotification();
+      
+      setTimeout(() => {
+        this.notifyContentScript(tabId, { action: 'destroyOverlay' }).catch(() => {});
+      }, 2000);
+      
+    } catch (e) {
+      // Tab doesn't exist in this browser - that's OK, just show notification
+      console.log('[Viboot] Timer tab not found in this browser context');
+      await this.showExpiryNotification();
+    }
     
     await this.finalCleanup();
   }

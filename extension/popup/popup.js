@@ -449,6 +449,19 @@ async function saveSettings() {
       action: 'saveSettings',
       settings: settings
     });
+    
+    // Notify active tab to refresh overlay setting
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { 
+          action: 'refreshOverlaySetting',
+          showOverlay: settings.showOverlay
+        }).catch(() => {});
+      }
+    } catch (e) {
+      // Ignore - tab may not have content script
+    }
   } catch (error) {
     console.error('[Viboot] Failed to save settings:', error);
   }

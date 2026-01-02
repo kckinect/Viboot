@@ -1048,6 +1048,29 @@ if (!window.vibootMessageListenerAdded) {
           sendResponse({ success: true });
           break;
 
+        case 'refreshOverlaySetting':
+          // Update cached overlay setting immediately
+          if (request.showOverlay !== undefined) {
+            vibootOverlayEnabled = request.showOverlay;
+            console.log('[Viboot] Overlay setting updated:', vibootOverlayEnabled);
+            
+            // If disabled, hide any existing overlay
+            if (!vibootOverlayEnabled && isMainFrame) {
+              hideOverlay();
+            }
+            // If enabled and timer is active, show overlay
+            if (vibootOverlayEnabled && isMainFrame) {
+              chrome.runtime.sendMessage({ action: 'getTimerStatus' }, (response) => {
+                if (response?.success && response.status?.active) {
+                  showOverlay();
+                  updateOverlay(response.status.remaining);
+                }
+              });
+            }
+          }
+          sendResponse({ success: true });
+          break;
+
         case 'updateOverlay':
           // Only update overlay in main frame and if enabled
           if (isMainFrame && request.remaining !== undefined) {
