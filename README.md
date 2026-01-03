@@ -1,19 +1,29 @@
 <p align="center">
-  <img src="extension/assets/icons/android-chrome-192x192.png" alt="Viboot Logo" width="100" height="100">
+  <img src="extension/assets/icons/android-chrome-192x192.png" alt="AutoPlay Control Logo" width="100" height="100">
 </p>
 
-<h1 align="center">Viboot</h1>
+<h1 align="center">AutoPlay Video Control - Easy Kit</h1>
 
 <p align="center">
-  <strong>Sleep Timer for Streaming Platforms</strong><br>
-  <em>Don't binge. Sleep better.</em>
+  <strong>Control Kit for Netflix / YouTube / Disney+ & More</strong><br>
+  <em>Set it. Forget it. Sleep peacefully.</em>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0-blue.svg" alt="Version 2.0">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version 2.0.0">
   <img src="https://img.shields.io/badge/manifest-v3-green.svg" alt="Manifest V3">
+  <img src="https://img.shields.io/badge/analytics-enabled-brightgreen.svg" alt="Analytics Enabled">
   <img src="https://img.shields.io/badge/license-MIT-purple.svg" alt="MIT License">
 </p>
+
+---
+
+## 🚀 Quick Links
+
+- **[Chrome Web Store Submission Guide](CHROME_STORE_SUBMISSION.md)** - Deploy to production
+- **[Privacy Policy](PRIVACY_POLICY.md)** - What we collect (spoiler: almost nothing)
+- **[Analytics Setup](server/ANALYTICS_SETUP.md)** - Configure telemetry & metrics
+- **[Quick Start](QUICK_START.md)** - Local development setup
 
 ---
 
@@ -21,27 +31,50 @@
 
 > **"Your sleep is priceless. Our tools are free."**
 
-We believe everyone deserves a good night's rest without needing to pay for basic digital wellness. Viboot exists to help you take control of your streaming habits and prioritize your health—completely free, forever.
+We believe everyone deserves a good night's rest without needing to pay for basic digital wellness. AutoPlay Video Control exists to help you take control of your streaming habits and prioritize your health—completely free, forever.
 
 ---
 
-## 📖 What is Viboot?
+## 📖 What is AutoPlay Video Control?
 
-Viboot is a free Chrome extension that adds a **sleep timer** to all your favorite streaming platforms. Set a timer, and when it expires, your video automatically pauses—helping you fall asleep without worrying about endless autoplay.
+### The Problem
 
-Whether you're watching Netflix to wind down, listening to YouTube videos as background noise, or catching up on your favorite shows on Disney+, Viboot ensures your screen won't run all night.
+You're in bed, watching your favorite show on Netflix, YouTube, or Disney+. Your eyes get heavy, you drift off... and wake up hours later to find your screen still playing random episodes you never intended to watch. Sound familiar?
+
+It's annoying. You have to:
+- Constantly adjust player settings before bed
+- Get up in the middle of the night to manually stop playback
+- Wake up to discover your bandwidth was wasted streaming all night
+- Deal with the guilt of another late-night binge session
+
+### The Solution
+
+**AutoPlay Video Control - Easy Kit** is a practical Chrome extension that solves this once and for all.
+
+It's simple: **Set and forget**. Press the timer button anytime you're watching at night, choose your duration, and relax. When the timer expires, your video automatically pauses. No more reaching for the remote. No more wasted streaming. No more guilt.
+
+### Peace of Mind
+
+When you wake up, you can rest assured:
+- ✅ Your screen isn't playing random shows you never asked for
+- ✅ You saved bandwidth (no overnight streaming)
+- ✅ You saved energy (display turns off naturally)
+- ✅ You saved time (no need to adjust settings every night)
+
+**Set it. Forget it. Sleep peacefully.**
 
 ---
 
 ## 🎯 Who Is This For?
 
-| User | Problem | How Viboot Helps |
-|------|---------|------------------|
-| **Night Owls** | "I always say just one more episode..." | Timer forces a natural stopping point |
-| **Parents** | Kids fall asleep watching content | Video pauses automatically, saves screen time |
-| **Light Sleepers** | Screen light/sound disrupts sleep | Content stops, darkness returns |
-| **Data-Conscious Users** | Streaming all night wastes bandwidth | Stops unnecessary data usage |
-| **Mindful Watchers** | Want to reduce screen time | Built-in accountability tool |
+| User | Frustration | Solution |
+|------|-------------|----------|
+| **Bedtime Watchers** | Tired of getting up to stop playback manually | Set timer, stay cozy, video stops automatically |
+| **Night Owls** | "Just one more episode" turns into 5 unintentional episodes | Timer creates a natural stopping point |
+| **Parents** | Kids fall asleep, screen plays all night | Automatic pause saves screen time & bandwidth |
+| **Data-Conscious Users** | Overnight streaming wastes gigabytes | Timer stops playback, saves your data plan |
+| **Energy Savers** | Screen running all night wastes electricity | Auto-pause lets display sleep naturally |
+| **Busy People** | No time to adjust settings every night | One-click presets = zero hassle |
 
 ---
 
@@ -125,9 +158,9 @@ Whether you're watching Netflix to wind down, listening to YouTube videos as bac
 ## 🚀 Installation
 
 ### From Chrome Web Store
-1. Visit the [Viboot Chrome Web Store page](#) *(coming soon)*
+1. Visit the [AutoPlay Control Chrome Web Store page](#) *(coming soon)*
 2. Click "Add to Chrome"
-3. Done! Click the Viboot icon to get started
+3. Done! Click the AutoPlay Control icon to get started
 
 ### Manual Installation (Developer Mode)
 1. Download or clone this repository
@@ -135,7 +168,7 @@ Whether you're watching Netflix to wind down, listening to YouTube videos as bac
 3. Enable "Developer mode" (top right toggle)
 4. Click "Load unpacked"
 5. Select the `extension` folder from this project
-6. Pin Viboot to your toolbar for easy access
+6. Pin AutoPlay Control to your toolbar for easy access
 
 ---
 
@@ -144,7 +177,7 @@ Whether you're watching Netflix to wind down, listening to YouTube videos as bac
 ### Starting a Timer
 
 1. **Navigate** to any supported streaming platform
-2. **Click** the Viboot icon in your toolbar
+2. **Click** the AutoPlay Control icon in your toolbar
 3. **Choose** a preset button OR enter a custom duration
 4. **Relax** — your video will pause when time's up
 
@@ -165,7 +198,7 @@ Whether you're watching Netflix to wind down, listening to YouTube videos as bac
 
 ### Customizing Presets
 
-1. Open Viboot popup
+1. Open AutoPlay Control popup
 2. Click "⚙️ Settings"
 3. Click "✏️ Edit" next to Quick Presets
 4. Enter new values (e.g., `20m`, `1h 15m`)
@@ -201,7 +234,7 @@ Whether you're watching Netflix to wind down, listening to YouTube videos as bac
 
 ## 🔒 Privacy & Permissions
 
-Viboot requests only the minimum permissions needed:
+AutoPlay Control requests only the minimum permissions needed:
 
 | Permission | Why It's Needed |
 |------------|-----------------|
@@ -226,7 +259,7 @@ Viboot requests only the minimum permissions needed:
 ### Project Structure
 
 ```
-Viboot/
+AutoPlayControl/
 ├── extension/
 │   ├── manifest.json          # Extension configuration
 │   ├── popup/                 # Popup UI
@@ -267,7 +300,7 @@ We welcome contributions! Here's how you can help:
 1. **Report Bugs** — Open an issue with steps to reproduce
 2. **Suggest Features** — We'd love to hear your ideas
 3. **Submit PRs** — Code improvements are always welcome
-4. **Spread the Word** — Tell others about Viboot
+4. **Spread the Word** — Tell others about AutoPlay Control
 
 ---
 
@@ -279,7 +312,7 @@ MIT License — Free to use, modify, and distribute.
 
 ## 💬 Support
 
-- **Issues:** [GitHub Issues](https://github.com/kckinect/Viboot/issues)
+- **Issues:** [GitHub Issues](https://github.com/kinect3/AutoPlayVideo/issues)
 - **Email:** *(coming soon)*
 
 ---
@@ -290,5 +323,5 @@ MIT License — Free to use, modify, and distribute.
 </p>
 
 <p align="center">
-  <a href="https://github.com/kckinect/Viboot">⭐ Star us on GitHub</a>
+  <a href="https://github.com/kinect3/AutoPlayVideo">⭐ Star us on GitHub</a>
 </p>

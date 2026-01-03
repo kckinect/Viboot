@@ -9,14 +9,31 @@
  * - Optimized storage writes
  */
 
+// ============================================================================
+// CONFIGURATION CONSTANTS
+// ============================================================================
+
+const TIMER_CONFIG = {
+  TICK_INTERVAL: 1000,              // 1 second - countdown tick interval
+  ALARM_TICK_PERIOD: 0.5,           // 0.5 minutes - chrome.alarms tick period
+  SAVE_STATE_INTERVAL: 10,          // 10 seconds - how often to save timer state
+  BADGE_UPDATE_INTERVAL: 60,        // 60 seconds - how often to update badge
+  BROADCAST_THROTTLE: 2000,         // 2 seconds - minimum time between broadcasts (reduced spam)
+  MIN_DURATION: 1,                  // 1 second - minimum timer duration
+  MAX_DURATION: 86400               // 24 hours - maximum timer duration
+};
+
 export class SleepTimerEngine {
   constructor() {
     this.activeTimer = null;
     this.intervalId = null;
     this.lastBroadcast = 0;
+    this.lastBroadcastRemaining = -1; // Track last broadcasted time to avoid spam
+    this.shouldBroadcast = true; // Control broadcast during countdown (false = suppress)
     this.isExpiring = false; // Prevent multiple expiration calls
     this.isTicking = false; // Prevent overlapping ticks
     this.isRestoring = false; // Prevent concurrent restoration
+    this.expirationLock = false; // Atomic lock for expiration (prevents race between tick and alarm)
     
     // Set up tab close listener
     this.setupTabListener();
@@ -43,7 +60,7 @@ export class SleepTimerEngine {
       
       console.log('[Viboot] Starting timer for ' + durationSeconds + 's on tab ' + tabId);
       
-      if (durationSeconds < 1 || durationSeconds > 86400) {
+      if (durationSeconds < TIMER_CONFIG.MIN_DURATION || durationSeconds > TIMER_CONFIG.MAX_DURATION) {
         throw new Error('Timer must be between 1 second and 24 hours');
       }
       
@@ -70,14 +87,19 @@ export class SleepTimerEngine {
       await chrome.storage.local.set({ activeTimer: this.activeTimer });
       
       // Use chrome.alarms for SW sleep resilience
-      await chrome.alarms.create('vibootTimerTick', { periodInMinutes: 0.5 });
+      await chrome.alarms.create('vibootTimerTick', { periodInMinutes: TIMER_CONFIG.ALARM_TICK_PERIOD });
       await chrome.alarms.create('vibootTimerExpiry', { 
         when: Date.now() + (durationSeconds * 1000) 
       });
       
       this.notifyContentScript(tabId, { action: 'timerStarted' });
       this.startCountdown();
+      
+      // Send initial broadcast, then suppress until timer expires
+      this.shouldBroadcast = true;
       this.updateBadge();
+      this.broadcastTimerUpdate();
+      this.shouldBroadcast = false; // Suppress broadcasts during countdown
       
       return this.activeTimer;
       
@@ -93,12 +115,13 @@ export class SleepTimerEngine {
     this.intervalId = setInterval(() => {
       // Non-async wrapper to prevent timing issues
       this.tick().catch(e => console.error('[Viboot] Tick error:', e));
-    }, 1000);
+    }, TIMER_CONFIG.TICK_INTERVAL);
   }
   
   async tick() {
     // Prevent overlapping ticks and check state
-    if (!this.activeTimer || this.isExpiring || this.isTicking) {
+    if (!this.activeTimer || this.isExpiring || this.isTicking || this.activeTimer.status === 'paused') {
+      this.isTicking = false;
       return;
     }
     this.isTicking = true;
@@ -106,7 +129,10 @@ export class SleepTimerEngine {
     try {
       this.activeTimer.remaining--;
     
-    // Check for expiration FIRST, before any other async operations
+    // Broadcast update first so UI shows current time (including 0)
+    this.broadcastTimerUpdate();
+    
+    // Then check for expiration
     if (this.activeTimer.remaining <= 0) {
       // Stop the interval immediately
       if (this.intervalId) {
@@ -117,17 +143,16 @@ export class SleepTimerEngine {
       return;
     }
     
-    // Only save state periodically (every 10 seconds)
-    if (this.activeTimer.remaining % 10 === 0) {
+    // Only save state periodically (using configured interval)
+    if (this.activeTimer.remaining % TIMER_CONFIG.SAVE_STATE_INTERVAL === 0) {
       this.saveTimerState().catch(e => console.warn('[Viboot] Save error:', e));
     }
     
-    // Update badge every minute
-    if (this.activeTimer.remaining % 60 === 0) {
+    // Update badge at configured interval
+    if (this.activeTimer.remaining % TIMER_CONFIG.BADGE_UPDATE_INTERVAL === 0) {
       this.updateBadge();
     }
     
-    this.broadcastTimerUpdate();
     } finally {
       this.isTicking = false;
     }
@@ -140,17 +165,24 @@ export class SleepTimerEngine {
         await this.syncTimerState();
       }
     } else if (alarmName === 'vibootTimerExpiry') {
-      // Direct expiration alarm - always try to expire
+      // Direct expiration alarm - check if timer should expire
       if (this.activeTimer && !this.isExpiring) {
-        this.activeTimer.remaining = 0;
-        await this.onTimerExpire();
+        // Calculate actual remaining time
+        const elapsed = Math.floor((Date.now() - this.activeTimer.startTime) / 1000);
+        const calculatedRemaining = this.activeTimer.duration - elapsed;
+        
+        // Only expire if we're actually at or past expiration time
+        if (calculatedRemaining <= 0) {
+          this.activeTimer.remaining = 0;
+          await this.onTimerExpire();
+        }
       }
     }
   }
   
   async syncTimerState() {
-    // Don't sync during expiration
-    if (this.isExpiring) return;
+    // Don't sync during expiration or if countdown is actively running
+    if (this.isExpiring || this.intervalId) return;
     
     const result = await chrome.storage.local.get('activeTimer');
     
@@ -169,7 +201,10 @@ export class SleepTimerEngine {
       await this.onTimerExpire();
     } else {
       this.activeTimer = { ...saved, remaining: remaining };
-      if (!this.intervalId) this.startCountdown();
+      // Only start countdown if not paused
+      if (this.activeTimer.status !== 'paused' && !this.intervalId) {
+        this.startCountdown();
+      }
       this.updateBadge();
       this.broadcastTimerUpdate();
     }
@@ -246,14 +281,18 @@ export class SleepTimerEngine {
   }
   
   async onTimerExpire() {
-    // Prevent multiple simultaneous expiration calls
-    if (this.isExpiring) {
+    // Atomic lock - prevent multiple simultaneous expiration calls (race between tick and alarm)
+    if (this.expirationLock || this.isExpiring) {
       console.log('[Viboot] Timer expiration already in progress, skipping');
       return;
     }
+    this.expirationLock = true;
     this.isExpiring = true;
     
     console.log('[Viboot] Timer expired! Pausing video...');
+    
+    // Re-enable broadcasts for expiration notification
+    this.shouldBroadcast = true;
     
     if (!this.activeTimer) {
       this.isExpiring = false;
@@ -292,13 +331,18 @@ export class SleepTimerEngine {
       await this.showExpiryNotification();
     }
     
-    await this.finalCleanup();
-    this.isExpiring = false;
+    // Wait 1 second before resetting
+    setTimeout(async () => {
+      await this.finalCleanup();
+      this.isExpiring = false;
+      this.expirationLock = false;
+    }, 1000);
   }
   
   async stopTimer() {
     console.log('[Viboot] Stopping timer');
     this.isExpiring = false; // Reset flag in case we're stopping during expiration
+    this.expirationLock = false; // Reset atomic lock
     const tabId = this.activeTimer?.tabId;
     this.cleanup();
     if (tabId) this.notifyContentScript(tabId, { action: 'destroyOverlay' }).catch(() => {});
@@ -308,6 +352,8 @@ export class SleepTimerEngine {
   cleanup() {
     this.isExpiring = false;
     this.isTicking = false;
+    this.expirationLock = false;
+    this.shouldBroadcast = true; // Reset for next timer
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -341,7 +387,66 @@ export class SleepTimerEngine {
     await this.saveTimerState();
     this.updateBadge();
     
+    // Broadcast extension immediately, then suppress again
+    this.shouldBroadcast = true;
+    this.broadcastTimerUpdate();
+    this.shouldBroadcast = false;
+    
     console.log('[Viboot] Timer extended by ' + additionalMinutes + ' minutes');
+    return this.activeTimer;
+  }
+  
+  async pauseTimer() {
+    if (!this.activeTimer) throw new Error('No active timer to pause');
+    if (this.activeTimer.status === 'paused') {
+      return this.activeTimer;
+    }
+    
+    console.log('[Viboot] Pausing timer');
+    
+    // Stop countdown
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    
+    // Clear alarms
+    await chrome.alarms.clear('vibootTimerTick');
+    await chrome.alarms.clear('vibootTimerExpiry');
+    
+    // Update status
+    this.activeTimer.status = 'paused';
+    this.activeTimer.pausedAt = Date.now();
+    
+    await this.saveTimerState();
+    this.updateBadge();
+    this.broadcastTimerUpdate();
+    
+    return this.activeTimer;
+  }
+  
+  async resumeTimer() {
+    if (!this.activeTimer) throw new Error('No active timer to resume');
+    if (this.activeTimer.status !== 'paused') return this.activeTimer;
+    
+    console.log('[Viboot] Resuming timer');
+    
+    // Update status
+    this.activeTimer.status = 'active';
+    this.activeTimer.startTime = Date.now() - ((this.activeTimer.duration - this.activeTimer.remaining) * 1000);
+    delete this.activeTimer.pausedAt;
+    
+    // Restart alarms
+    await chrome.alarms.create('vibootTimerTick', { periodInMinutes: TIMER_CONFIG.ALARM_TICK_PERIOD });
+    await chrome.alarms.create('vibootTimerExpiry', { 
+      when: Date.now() + (this.activeTimer.remaining * 1000) 
+    });
+    
+    await this.saveTimerState();
+    this.startCountdown();
+    this.updateBadge();
+    this.broadcastTimerUpdate();
+    
     return this.activeTimer;
   }
   
@@ -352,15 +457,24 @@ export class SleepTimerEngine {
       const result = await chrome.storage.local.get('activeTimer');
       const saved = result.activeTimer;
       
-      if (!saved || saved.status !== 'active') {
+      if (!saved) {
         return { active: false };
       }
       
-      // Calculate remaining time based on start time
-      const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
-      const remaining = Math.max(0, saved.duration - elapsed);
+      let remaining;
       
-      if (remaining <= 0) {
+      // If paused, use the saved remaining time (don't calculate)
+      if (saved.status === 'paused') {
+        remaining = saved.remaining;
+      } else {
+        // Calculate remaining time based on start time for active timers
+        const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
+        remaining = Math.max(0, saved.duration - elapsed);
+      }
+      
+      // Return inactive only if timer has expired AND been cleaned up
+      // This allows the UI to display 0 before expiration
+      if (remaining < 0 || !this.activeTimer) {
         return { active: false };
       }
       
@@ -375,6 +489,7 @@ export class SleepTimerEngine {
       
       return {
         active: true,
+        status: saved.status || 'active',
         remaining: remaining,
         duration: saved.duration,
         platform: saved.platform,
@@ -400,6 +515,15 @@ export class SleepTimerEngine {
   
   async pauseVideoFallback(tabId) {
     try {
+      // Get tab info to check URL
+      const tab = await chrome.tabs.get(tabId);
+      
+      // Don't try to pause on chrome://, about:, or other restricted URLs
+      if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('about:') || tab.url.startsWith('chrome-extension://')) {
+        console.log('[Viboot] Skipping pause on restricted URL:', tab.url);
+        return;
+      }
+      
       await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: () => { document.querySelectorAll('video').forEach(v => v.pause()); }
@@ -441,9 +565,17 @@ export class SleepTimerEngine {
   }
   
   broadcastTimerUpdate() {
+    // Suppress broadcasts during active countdown (overlay handles countdown locally)
+    if (!this.shouldBroadcast) return;
+    
     const now = Date.now();
-    if (now - this.lastBroadcast < 900) return;
+    if (now - this.lastBroadcast < TIMER_CONFIG.BROADCAST_THROTTLE) return;
+    
+    // Only broadcast if remaining time actually changed
+    if (this.activeTimer?.remaining === this.lastBroadcastRemaining) return;
+    
     this.lastBroadcast = now;
+    this.lastBroadcastRemaining = this.activeTimer?.remaining ?? -1;
     
     chrome.runtime.sendMessage({
       action: 'timerUpdate',
@@ -485,7 +617,7 @@ export class SleepTimerEngine {
   }
   
   async restoreTimer() {
-    // Don't restore if timer is already active, currently expiring, or already restoring
+    // Prevent race condition: don't restore if timer is already active, currently expiring, or already restoring
     if (this.activeTimer || this.isExpiring || this.isRestoring) {
       console.log('[Viboot] Timer already active/restoring, skipping restore');
       return this.activeTimer;
@@ -524,11 +656,16 @@ export class SleepTimerEngine {
       
       this.activeTimer = { ...saved, remaining: remaining };
       
-      await chrome.alarms.create('vibootTimerTick', { periodInMinutes: 0.5 });
+      await chrome.alarms.create('vibootTimerTick', { periodInMinutes: TIMER_CONFIG.ALARM_TICK_PERIOD });
       await chrome.alarms.create('vibootTimerExpiry', { when: Date.now() + (remaining * 1000) });
       
       this.startCountdown();
       this.updateBadge();
+      
+      // Send broadcast on restoration, then suppress
+      this.shouldBroadcast = true;
+      this.broadcastTimerUpdate();
+      this.shouldBroadcast = false;
       
       console.log('[Viboot] Timer restored: ' + Math.ceil(remaining / 60) + ' min remaining');
       this.isRestoring = false;

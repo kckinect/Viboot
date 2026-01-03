@@ -1,25 +1,54 @@
 /**
- * Viboot Popup Controller
- * Handles UI interactions and communicates with background service worker
+ * AutoPlay Video Control - Easy Kit
+ * Popup Controller - Handles UI interactions and communicates with background service worker
  */
 
-import { VIBOOT_CONFIG, getSiteDisplayName, getReferralLink, getEnabledSocialLinks } from '../utils/config.js';
+import { AUTOPLAY_CONFIG, getSiteDisplayName } from '../utils/config.js';
 
+// ============================================// CONSTANTS
 // ============================================
-// STATE
+
+const RING_CIRCUMFERENCE = 339.292; // 2π × radius(54px)
+const ERROR_DISPLAY_DURATION = 3000; // milliseconds
+const POLLING_INTERVAL = 1000; // milliseconds
+const FEEDBACK_DISPLAY_DURATION = 1500; // milliseconds
+
+// Supported streaming platforms
+const PLATFORM_MAP = {
+  'netflix.com': 'Netflix',
+  'youtube.com': 'YouTube',
+  'disneyplus.com': 'Disney+',
+  'amazon.com': 'Prime Video',
+  'primevideo.com': 'Prime Video',
+  'hbomax.com': 'HBO Max',
+  'max.com': 'Max',
+  'crunchyroll.com': 'Crunchyroll',
+  'twitch.tv': 'Twitch',
+  'hulu.com': 'Hulu'
+};
+
+// Default presets in seconds
+const DEFAULT_PRESETS = [
+  30 * 60,   // 30m (main clock)
+  60 * 60,   // 1h
+  90 * 60,   // 1h 30m
+  120 * 60   // 2h
+];
+
+// ============================================// STATE
 // ============================================
 
 let currentTimer = null;
 let updateInterval = null;
+let currentPresets = [...DEFAULT_PRESETS];
 
 // ============================================
 // DOM ELEMENTS
 // ============================================
 
 const elements = {
-  // Theme
-  themeToggle: document.getElementById('themeToggle'),
-  themeIcon: document.getElementById('themeIcon'),
+  // Settings Button
+  settingsBtn: document.getElementById('settingsBtn'),
   
   // Platform
   platformBadge: document.getElementById('platformBadge'),
@@ -40,43 +69,7 @@ const elements = {
   presetsGrid: document.getElementById('presetsGrid'),
   inputSection: document.getElementById('inputSection'),
   customInput: document.getElementById('customInput'),
-  setBtn: document.getElementById('setBtn'),
-  
-  // Settings
-  settingsToggle: document.getElementById('settingsToggle'),
-  settingsPanel: document.getElementById('settingsPanel'),
-  toggleArrow: document.getElementById('toggleArrow'),
-  showOverlay: document.getElementById('showOverlay'),
-  showNotifications: document.getElementById('showNotifications'),
-  autoPauseNext: document.getElementById('autoPauseNext'),
-  
-  // Presets Editor
-  editPresetsBtn: document.getElementById('editPresetsBtn'),
-  presetsEditor: document.getElementById('presetsEditor'),
-  savePresetsBtn: document.getElementById('savePresetsBtn'),
-  resetPresetsBtn: document.getElementById('resetPresetsBtn'),
-  presetInputs: [
-    document.getElementById('preset1'),
-    document.getElementById('preset2'),
-    document.getElementById('preset3'),
-    document.getElementById('preset4'),
-    document.getElementById('preset5'),
-    document.getElementById('preset6')
-  ],
-  
-  // Last Timer Bar
-  lastTimerBar: document.getElementById('lastTimerBar'),
-  lastTime: document.getElementById('lastTime'),
-  lastSite: document.getElementById('lastSite'),
-  lastDuration: document.getElementById('lastDuration'),
-  
-  // Social Links
-  shareBtn: document.getElementById('shareBtn'),
-  twitterBtn: document.getElementById('twitterBtn'),
-  discordBtn: document.getElementById('discordBtn'),
-  githubBtn: document.getElementById('githubBtn'),
-  emailBtn: document.getElementById('emailBtn'),
-  shareToast: document.getElementById('shareToast')
+  setBtn: document.getElementById('setBtn')
 };
 
 // ============================================
@@ -85,34 +78,45 @@ const elements = {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    // Load theme
-    loadTheme();
-    
-    // Load settings (non-blocking)
-    loadSettings().catch(e => console.warn('[Viboot] Settings load failed:', e));
-    
-    // Load presets and render buttons
-    await loadPresets();
-    
-    // Detect platform
-    await detectPlatform();
-    
-    // Get current timer status
-    await refreshTimerStatus();
-    
-    // Load last timer info
-    await loadLastTimerInfo();
-    
-    // Setup social links
-    setupSocialLinks();
-    
-    // Set up event listeners
+    // Setup event listeners immediately (no data dependencies)
     setupEventListeners();
+    
+    // Batch critical data loads in parallel
+    const [storageData, timerStatus] = await Promise.all([
+      chrome.storage.local.get(['autoplay-theme', 'timerPresets', 'lastTimer', 'compactMode']),
+      chrome.runtime.sendMessage({ action: 'getTimerStatus' }).catch(() => ({ success: false }))
+    ]);
+    
+    // Apply theme immediately
+    applyTheme(storageData['autoplay-theme']);
+    
+    // Apply compact mode
+    if (storageData.compactMode) {
+      document.body.classList.add('compact');
+    }
+    
+    // Render presets immediately
+    if (storageData.timerPresets && Array.isArray(storageData.timerPresets) && storageData.timerPresets.length === 4) {
+      currentPresets = storageData.timerPresets;
+    }
+    renderPresetButtons();
+    
+    // Display timer status
+    if (timerStatus.success && timerStatus.status?.active) {
+      currentTimer = timerStatus.status;
+      showActiveTimer();
+      startLocalUpdates();
+    } else {
+      showInactiveTimer();
+    }
+    
+    // Non-critical: Load asynchronously without blocking
+    detectPlatform().catch(e => console.warn('[AutoPlay] Platform detection failed:', e));
     
     // Note: We use polling in startLocalUpdates instead of message listeners
     // This avoids race conditions with multiple popups
   } catch (error) {
-    console.error('[Viboot] Popup initialization failed:', error);
+    console.error('[AutoPlay] Popup initialization failed:', error);
   }
 });
 
@@ -120,23 +124,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 // THEME HANDLING
 // ============================================
 
-function loadTheme() {
-  const savedTheme = localStorage.getItem('viboot-theme') || 'dark';
-  document.body.setAttribute('data-theme', savedTheme);
-  updateThemeIcon(savedTheme);
-}
-
-function toggleTheme() {
-  const currentTheme = document.body.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  
-  document.body.setAttribute('data-theme', newTheme);
-  localStorage.setItem('viboot-theme', newTheme);
-  updateThemeIcon(newTheme);
-}
-
-function updateThemeIcon(theme) {
-  elements.themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+function applyTheme(savedTheme) {
+  const theme = savedTheme || 'dark';
+  document.body.setAttribute('data-theme', theme);
 }
 
 // ============================================
@@ -155,21 +145,19 @@ async function detectPlatform() {
     const url = new URL(tab.url);
     const hostname = url.hostname;
     
-    const platforms = {
-      'netflix.com': 'Netflix',
-      'youtube.com': 'YouTube',
-      'disneyplus.com': 'Disney+',
-      'amazon.com': 'Prime Video',
-      'primevideo.com': 'Prime Video',
-      'hbomax.com': 'HBO Max',
-      'max.com': 'Max',
-      'crunchyroll.com': 'Crunchyroll',
-      'twitch.tv': 'Twitch',
-      'hulu.com': 'Hulu'
-    };
+    // Check if it's the extension's own pages (settings, etc.)
+    if (url.protocol === 'chrome-extension:' || url.protocol === 'moz-extension:') {
+      // Check if it's the settings page
+      if (url.pathname.includes('settings')) {
+        setPlatformBadge('Settings', 'generic');
+      } else {
+        setPlatformBadge('Extension', 'generic');
+      }
+      return;
+    }
     
     let detected = null;
-    for (const [domain, name] of Object.entries(platforms)) {
+    for (const [domain, name] of Object.entries(PLATFORM_MAP)) {
       if (hostname.includes(domain)) {
         detected = name;
         break;
@@ -228,6 +216,10 @@ async function refreshTimerStatus() {
     
     if (response.success && response.status.active) {
       currentTimer = response.status;
+      // Ensure status property exists
+      if (!currentTimer.status) {
+        currentTimer.status = 'active';
+      }
       showActiveTimer();
       startLocalUpdates();
     } else {
@@ -235,7 +227,7 @@ async function refreshTimerStatus() {
       showInactiveTimer();
     }
   } catch (error) {
-    console.error('[Viboot] Failed to get timer status:', error);
+    console.error('[AutoPlay] Failed to get timer status:', error);
     showInactiveTimer();
   }
 }
@@ -258,6 +250,7 @@ async function startTimer(minutes) {
     if (response.success) {
       currentTimer = {
         active: true,
+        status: 'active',
         remaining: minutes * 60,
         duration: minutes * 60
       };
@@ -267,7 +260,7 @@ async function startTimer(minutes) {
       alert('Failed to start timer: ' + (response.error || 'Unknown error'));
     }
   } catch (error) {
-    console.error('[Viboot] Failed to start timer:', error);
+    console.error('[AutoPlay] Failed to start timer:', error);
     alert('Failed to start timer');
   }
 }
@@ -279,14 +272,14 @@ async function stopTimer() {
     stopLocalUpdates();
     showInactiveTimer();
   } catch (error) {
-    console.error('[Viboot] Failed to stop timer:', error);
+    console.error('[AutoPlay] Failed to stop timer:', error);
   }
 }
 
 async function extendTimer(minutes = 10) {
   try {
     if (!currentTimer) {
-      console.warn('[Viboot] No active timer to extend');
+      console.warn('[AutoPlay] No active timer to extend');
       return;
     }
     
@@ -301,7 +294,43 @@ async function extendTimer(minutes = 10) {
       updateTimerDisplay();
     }
   } catch (error) {
-    console.error('[Viboot] Failed to extend timer:', error);
+    console.error('[AutoPlay] Failed to extend timer:', error);
+  }
+}
+
+async function pauseTimer() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'pauseTimer' });
+    
+    if (response?.success) {
+      if (currentTimer) {
+        currentTimer.status = 'paused';
+      }
+      updateTimerDisplay();
+      elements.timerLabel.textContent = 'Paused';
+      elements.timerRing.classList.add('paused');
+    } else {
+      console.error('[AutoPlay] pauseTimer failed:', response?.error);
+    }
+  } catch (error) {
+    console.error('[AutoPlay] Failed to pause timer:', error);
+  }
+}
+
+async function resumeTimer() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'resumeTimer' });
+    
+    if (response?.success) {
+      if (currentTimer) {
+        currentTimer.status = 'active';
+      }
+      updateTimerDisplay();
+      elements.timerLabel.textContent = 'remaining';
+      elements.timerRing.classList.remove('paused');
+    }
+  } catch (error) {
+    console.error('[AutoPlay] Failed to resume timer:', error);
   }
 }
 
@@ -311,18 +340,32 @@ async function extendTimer(minutes = 10) {
 
 function showActiveTimer() {
   elements.timerRing.classList.add('active');
+
   elements.timerControls.classList.remove('hidden');
-  elements.timerLabel.textContent = 'remaining';
+  
+  // Check if timer is paused
+  if (currentTimer && currentTimer.status === 'paused') {
+    elements.timerRing.classList.add('paused');
+    elements.timerLabel.textContent = 'Paused';
+  } else {
+    elements.timerRing.classList.remove('paused');
+    elements.timerLabel.textContent = 'remaining';
+  }
+  
   updateTimerDisplay();
   updateRingProgress();
 }
 
 function showInactiveTimer() {
   elements.timerRing.classList.remove('active');
+  elements.timerRing.classList.remove('paused');
   elements.timerControls.classList.add('hidden');
-  elements.timerValue.textContent = '--:--';
-  elements.timerLabel.textContent = 'No timer active';
-  elements.ringProgress.style.strokeDashoffset = '339.292';
+  
+  // Display first preset as the default
+  const firstPresetSeconds = currentPresets[0] || DEFAULT_PRESETS[0];
+  elements.timerValue.textContent = formatSecondsToDisplay(firstPresetSeconds);
+  elements.timerLabel.textContent = 'Tap to start';
+  elements.ringProgress.style.strokeDashoffset = String(RING_CIRCUMFERENCE);
 }
 
 function updateTimerDisplay() {
@@ -347,9 +390,8 @@ function updateTimerDisplay() {
 function updateRingProgress() {
   if (!currentTimer) return;
   
-  const circumference = 339.292; // 2 * PI * 54 (radius)
   const progress = currentTimer.remaining / currentTimer.duration;
-  const offset = circumference * (1 - progress);
+  const offset = RING_CIRCUMFERENCE * (1 - progress);
   
   elements.ringProgress.style.strokeDashoffset = offset;
 }
@@ -370,8 +412,22 @@ function startLocalUpdates() {
       const response = await chrome.runtime.sendMessage({ action: 'getTimerStatus' });
       
       if (response?.success && response.status?.active) {
+        const previousStatus = currentTimer?.status;
         currentTimer = response.status;
+        
+        // Update the display
         updateTimerDisplay();
+        
+        // If status changed (active <-> paused), update UI accordingly
+        if (previousStatus !== currentTimer.status) {
+          if (currentTimer.status === 'paused') {
+            elements.timerLabel.textContent = 'Paused';
+            elements.timerRing.classList.add('paused');
+          } else {
+            elements.timerLabel.textContent = 'remaining';
+            elements.timerRing.classList.remove('paused');
+          }
+        }
       } else {
         // Timer ended or was stopped
         currentTimer = null;
@@ -380,10 +436,10 @@ function startLocalUpdates() {
       }
     } catch (error) {
       // Extension context may have been invalidated
-      console.warn('[Viboot] Failed to get timer status:', error);
+      console.warn('[AutoPlay] Failed to get timer status:', error);
       stopLocalUpdates();
     }
-  }, 1000);
+  }, POLLING_INTERVAL);
 }
 
 function stopLocalUpdates() {
@@ -457,99 +513,19 @@ function formatSecondsToDisplay(totalSeconds) {
 }
 
 // ============================================
-// SETTINGS
-// ============================================
-
-async function loadSettings() {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getSettings' });
-    
-    if (response.success) {
-      const settings = response.settings;
-      elements.showOverlay.checked = settings.showOverlay ?? true;
-      elements.showNotifications.checked = settings.showNotifications ?? true;
-      elements.autoPauseNext.checked = settings.autoPauseNext ?? false;
-    }
-  } catch (error) {
-    console.error('[Viboot] Failed to load settings:', error);
-  }
-}
-
-async function saveSettings() {
-  try {
-    const settings = {
-      showOverlay: elements.showOverlay.checked,
-      showNotifications: elements.showNotifications.checked,
-      autoPauseNext: elements.autoPauseNext.checked
-    };
-    
-    await chrome.runtime.sendMessage({
-      action: 'saveSettings',
-      settings: settings
-    });
-    
-    // Notify active tab to refresh overlay setting
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        chrome.tabs.sendMessage(tab.id, { 
-          action: 'refreshOverlaySetting',
-          showOverlay: settings.showOverlay
-        }).catch(() => {});
-      }
-    } catch (e) {
-      // Ignore - tab may not have content script
-    }
-  } catch (error) {
-    console.error('[Viboot] Failed to save settings:', error);
-  }
-}
-
-// ============================================
 // PRESET TIMERS
 // ============================================
 
-// Default presets in seconds
-const DEFAULT_PRESETS = [
-  15 * 60,   // 15m
-  30 * 60,   // 30m
-  45 * 60,   // 45m
-  60 * 60,   // 1h
-  90 * 60,   // 1h 30m
-  120 * 60   // 2h
-];
-
-let currentPresets = [...DEFAULT_PRESETS];
-
-async function loadPresets() {
-  try {
-    const result = await chrome.storage.local.get('timerPresets');
-    if (result.timerPresets && Array.isArray(result.timerPresets) && result.timerPresets.length === 6) {
-      currentPresets = result.timerPresets;
-    } else {
-      currentPresets = [...DEFAULT_PRESETS];
-    }
-    
-    // Render the preset buttons
-    renderPresetButtons();
-    
-    // Populate editor inputs
-    populatePresetEditor();
-  } catch (error) {
-    console.error('[Viboot] Failed to load presets:', error);
-    currentPresets = [...DEFAULT_PRESETS];
-    renderPresetButtons();
-  }
-}
-
 function renderPresetButtons() {
-  elements.presetsGrid.innerHTML = '';
+  elements.presetsGrid.replaceChildren();
   
-  currentPresets.forEach((seconds, index) => {
+  // Skip first preset (index 0) since it's for the main clock
+  // Only render presets 2, 3, 4 as buttons
+  currentPresets.slice(1).forEach((seconds, index) => {
     const btn = document.createElement('button');
     btn.className = 'preset-btn';
     btn.dataset.seconds = seconds;
-    btn.dataset.index = index;
+    btn.dataset.index = index + 1; // Adjust index since we sliced
     btn.textContent = formatSecondsToDisplay(seconds);
     btn.addEventListener('click', () => startPresetTimer(seconds));
     elements.presetsGrid.appendChild(btn);
@@ -560,112 +536,23 @@ function startPresetTimer(seconds) {
   startTimer(seconds / 60); // Convert to minutes
 }
 
-function populatePresetEditor() {
-  currentPresets.forEach((seconds, index) => {
-    if (elements.presetInputs[index]) {
-      elements.presetInputs[index].value = formatSecondsToDisplay(seconds);
-    }
-  });
-}
-
-async function savePresets() {
-  const newPresets = [];
-  let hasError = false;
-  
-  for (let i = 0; i < 6; i++) {
-    const input = elements.presetInputs[i];
-    const value = input.value.trim();
-    
-    if (!value) {
-      // Use default if empty
-      newPresets.push(DEFAULT_PRESETS[i]);
-      input.value = formatSecondsToDisplay(DEFAULT_PRESETS[i]);
-      continue;
-    }
-    
-    const seconds = parseTimeInput(value);
-    
-    if (!seconds || seconds < 1) {
-      input.style.borderColor = 'var(--danger)';
-      hasError = true;
-      continue;
-    }
-    
-    const maxSeconds = 24 * 60 * 60; // 24 hours
-    if (seconds > maxSeconds) {
-      input.style.borderColor = 'var(--danger)';
-      hasError = true;
-      continue;
-    }
-    
-    input.style.borderColor = '';
-    newPresets.push(seconds);
-    input.value = formatSecondsToDisplay(seconds);
-  }
-  
-  if (hasError) {
-    setTimeout(() => {
-      elements.presetInputs.forEach(input => {
-        input.style.borderColor = '';
-      });
-    }, 1500);
-    return;
-  }
-  
-  try {
-    await chrome.storage.local.set({ timerPresets: newPresets });
-    currentPresets = newPresets;
-    renderPresetButtons();
-    
-    // Refresh context menus with new presets
-    chrome.runtime.sendMessage({ action: 'refreshContextMenus' }).catch(() => {});
-    
-    // Show success feedback
-    elements.savePresetsBtn.textContent = '✓ Saved!';
-    elements.savePresetsBtn.style.background = 'var(--success)';
-    setTimeout(() => {
-      elements.savePresetsBtn.textContent = '💾 Save';
-      elements.savePresetsBtn.style.background = '';
-    }, 1500);
-  } catch (error) {
-    console.error('[Viboot] Failed to save presets:', error);
-  }
-}
-
-async function resetPresets() {
-  try {
-    await chrome.storage.local.remove('timerPresets');
-    currentPresets = [...DEFAULT_PRESETS];
-    renderPresetButtons();
-    populatePresetEditor();
-    
-    // Refresh context menus with default presets
-    chrome.runtime.sendMessage({ action: 'refreshContextMenus' }).catch(() => {});
-    
-    // Show reset feedback
-    elements.resetPresetsBtn.textContent = '✓ Reset!';
-    setTimeout(() => {
-      elements.resetPresetsBtn.textContent = '↩️ Reset';
-    }, 1500);
-  } catch (error) {
-    console.error('[Viboot] Failed to reset presets:', error);
-  }
-}
-
-function togglePresetsEditor() {
-  const isHidden = elements.presetsEditor.classList.contains('hidden');
-  elements.presetsEditor.classList.toggle('hidden');
-  elements.editPresetsBtn.classList.toggle('active', isHidden);
-  elements.editPresetsBtn.textContent = isHidden ? '✏️ Done' : '✏️ Edit';
-}
-
 // ============================================
 // EVENT LISTENERS
 // ============================================
 
 function setupEventListeners() {
-  // Theme toggle
-  elements.themeToggle.addEventListener('click', toggleTheme);
+  // Settings button
+  if (elements.settingsBtn) {
+    elements.settingsBtn.addEventListener('click', () => {
+      console.log('[AutoPlay] Opening settings page');
+      chrome.runtime.openOptionsPage();
+    });
+  } else {
+    console.error('[AutoPlay] Settings button not found!');
+  }
+  
+  // Main timer ring click (starts first preset when inactive)
+  elements.timerRing.addEventListener('click', handleTimerRingClick);
   
   // Custom input
   elements.setBtn.addEventListener('click', handleCustomInput);
@@ -678,31 +565,22 @@ function setupEventListeners() {
   // Timer controls
   elements.extendBtn.addEventListener('click', () => extendTimer(10));
   elements.stopBtn.addEventListener('click', stopTimer);
+}
+
+function handleTimerRingClick() {
+  // If timer is inactive, start it with first preset
+  if (!currentTimer || !currentTimer.active) {
+    const firstPresetSeconds = currentPresets[0] || DEFAULT_PRESETS[0];
+    startPresetTimer(firstPresetSeconds);
+    return;
+  }
   
-  // Settings toggle
-  elements.settingsToggle.addEventListener('click', () => {
-    elements.settingsPanel.classList.toggle('hidden');
-    elements.toggleArrow.classList.toggle('open');
-  });
-  
-  // Settings changes
-  elements.showOverlay.addEventListener('change', saveSettings);
-  elements.showNotifications.addEventListener('change', saveSettings);
-  elements.autoPauseNext.addEventListener('change', saveSettings);
-  
-  // Presets editor
-  elements.editPresetsBtn.addEventListener('click', togglePresetsEditor);
-  elements.savePresetsBtn.addEventListener('click', savePresets);
-  elements.resetPresetsBtn.addEventListener('click', resetPresets);
-  
-  // Enter key in preset inputs
-  elements.presetInputs.forEach(input => {
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        savePresets();
-      }
-    });
-  });
+  // If timer is active, toggle pause/resume
+  if (currentTimer.status === 'paused') {
+    resumeTimer();
+  } else {
+    pauseTimer();
+  }
 }
 
 function handleCustomInput() {
@@ -746,7 +624,7 @@ function showInputError(message) {
     if (hintEl) hintEl.classList.add('hidden');
     
     // Auto-hide after 3 seconds
-    setTimeout(() => hideInputError(), 3000);
+    setTimeout(() => hideInputError(), ERROR_DISPLAY_DURATION);
   }
 }
 
@@ -765,55 +643,8 @@ function hideInputError() {
 // This prevents race conditions when multiple popups are open
 
 // ============================================
-// LAST TIMER INFO
+// UTILITY FUNCTIONS
 // ============================================
-
-async function loadLastTimerInfo() {
-  try {
-    const result = await chrome.storage.local.get('lastTimer');
-    const lastTimer = result.lastTimer;
-    
-    if (!lastTimer || !lastTimer.endTime) {
-      elements.lastTimerBar?.classList.add('hidden');
-      return;
-    }
-    
-    // Format time ago
-    const timeAgo = formatTimeAgo(lastTimer.endTime);
-    const siteName = lastTimer.siteName || getSiteDisplayName(lastTimer.site);
-    const duration = formatDurationMinutes(lastTimer.duration);
-    
-    if (elements.lastTime) elements.lastTime.textContent = timeAgo;
-    if (elements.lastSite) elements.lastSite.textContent = siteName;
-    if (elements.lastDuration) elements.lastDuration.textContent = duration;
-    
-    elements.lastTimerBar?.classList.remove('hidden');
-  } catch (error) {
-    console.warn('[Viboot] Failed to load last timer info:', error);
-    elements.lastTimerBar?.classList.add('hidden');
-  }
-}
-
-function formatTimeAgo(timestamp) {
-  const now = Date.now();
-  const diff = now - timestamp;
-  
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-  
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 2) {
-    const date = new Date(timestamp);
-    return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-  }
-  if (days < 7) return `${days} days ago`;
-  
-  const date = new Date(timestamp);
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-}
 
 function formatDurationMinutes(seconds) {
   if (!seconds) return '--';
@@ -822,98 +653,6 @@ function formatDurationMinutes(seconds) {
   const hours = Math.floor(mins / 60);
   const remainingMins = mins % 60;
   return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
-}
-
-// ============================================
-// SOCIAL LINKS & SHARING
-// ============================================
-
-async function setupSocialLinks() {
-  const social = VIBOOT_CONFIG.social;
-  
-  // Get or generate referral code
-  let referralCode = await getReferralCode();
-  
-  // Setup Twitter button
-  if (elements.twitterBtn && social.twitter.enabled) {
-    const shareText = VIBOOT_CONFIG.referral.shareMessages.twitter;
-    const shareUrl = getReferralLink(referralCode);
-    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
-    elements.twitterBtn.href = twitterUrl;
-  } else if (elements.twitterBtn) {
-    elements.twitterBtn.style.display = 'none';
-  }
-  
-  // Setup Discord button
-  if (elements.discordBtn && social.discord.enabled) {
-    elements.discordBtn.href = social.discord.url;
-  } else if (elements.discordBtn) {
-    elements.discordBtn.style.display = 'none';
-  }
-  
-  // Setup GitHub button
-  if (elements.githubBtn && social.github.enabled) {
-    elements.githubBtn.href = social.github.url;
-  } else if (elements.githubBtn) {
-    elements.githubBtn.style.display = 'none';
-  }
-  
-  // Setup Email button
-  if (elements.emailBtn && social.email.enabled) {
-    const emailMsg = VIBOOT_CONFIG.referral.shareMessages.email;
-    const shareUrl = getReferralLink(referralCode);
-    const mailtoUrl = `mailto:?subject=${encodeURIComponent(emailMsg.subject)}&body=${encodeURIComponent(emailMsg.body + '\n\n' + shareUrl)}`;
-    elements.emailBtn.href = mailtoUrl;
-  } else if (elements.emailBtn) {
-    elements.emailBtn.style.display = 'none';
-  }
-  
-  // Setup Share button (copy link)
-  if (elements.shareBtn) {
-    elements.shareBtn.addEventListener('click', async () => {
-      const shareUrl = getReferralLink(referralCode);
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        showShareToast();
-      } catch (e) {
-        console.error('[Viboot] Failed to copy:', e);
-      }
-    });
-  }
-}
-
-async function getReferralCode() {
-  try {
-    const result = await chrome.storage.local.get('referralCode');
-    if (result.referralCode) return result.referralCode;
-    
-    // Generate new 6-character code
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    
-    await chrome.storage.local.set({ referralCode: code });
-    return code;
-  } catch (error) {
-    console.warn('[Viboot] Failed to get/generate referral code:', error);
-    return '';
-  }
-}
-
-function showShareToast() {
-  if (!elements.shareToast) return;
-  
-  elements.shareToast.classList.remove('hidden');
-  elements.shareToast.classList.add('visible');
-  
-  setTimeout(() => {
-    elements.shareToast.classList.remove('visible');
-    setTimeout(() => {
-      elements.shareToast.classList.add('hidden');
-    }, 300);
-  }, 2000);
 }
 
 // ============================================

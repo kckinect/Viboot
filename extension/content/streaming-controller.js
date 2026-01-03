@@ -1,15 +1,41 @@
 /**
- * Viboot Streaming Controller
+ * AutoPlay Video Control - Streaming Controller
  * Unified content script for video playback control across all streaming platforms
  * Handles: video detection, pause/play, timer overlay, custom timer prompts
  */
 
 // ============================================================================
+// CONFIGURATION CONSTANTS
+// ============================================================================
+
+const AUTOPLAY_CONFIG = {
+  // Video cache settings
+  VIDEO_CACHE_TTL: 10 * 1000,           // 10 seconds - how long to cache video element
+  VIDEO_CACHE_THROTTLE: 250,            // 250ms - minimum time between cache queries
+  
+  // Overlay settings
+  OVERLAY_UPDATE_THROTTLE: 800,         // 800ms - minimum time between overlay updates
+  OVERLAY_SETTING_CACHE_TTL: 5000,      // 5 seconds - how long to cache overlay setting
+  OVERLAY_WARNING_THRESHOLD: 300,       // 5 minutes - when to show warning state
+  OVERLAY_CRITICAL_THRESHOLD: 60,       // 1 minute - when to show critical state
+  
+  // Notification settings
+  NOTIFICATION_DURATION: 3000,          // 3 seconds - how long to show notifications
+  
+  // Video finding settings
+  VIDEO_FIND_MAX_RETRIES: 5,            // Maximum retry attempts for finding video
+  VIDEO_FIND_RETRY_BASE_DELAY: 500,     // Base delay between retries (ms)
+  
+  // Timer broadcast settings
+  BROADCAST_THROTTLE: 900               // 900ms - minimum time between timer broadcasts
+};
+
+// ============================================================================
 // UTILITIES
 // ============================================================================
 
-if (!window.VibootUtils) {
-  window.VibootUtils = {
+if (!window.AutoPlayUtils) {
+  window.AutoPlayUtils = {
     /**
      * Parse duration string to seconds (1s, 30s, 5m, 2h, 1h30m, etc.)
      */
@@ -422,22 +448,22 @@ if (!window.PlatformStrategies) {
 // VIDEO CACHE & HELPERS
 // ============================================================================
 
-if (!window.vibootVideoCache) {
-  window.vibootVideoCache = { 
+if (!window.autoplayVideoCache) {
+  window.autoplayVideoCache = { 
     element: null, 
     timestamp: null, 
-    maxAge: 10000,  // 10 seconds cache (reduced DOM queries)
+    maxAge: AUTOPLAY_CONFIG.VIDEO_CACHE_TTL,  // Use constant
     lastCheck: 0
   };
 }
 
 if (!window.getCachedVideo) {
   window.getCachedVideo = function() {
-    const cache = window.vibootVideoCache;
+    const cache = window.autoplayVideoCache;
     const now = Date.now();
     
-    // Throttle cache checks to once per 100ms
-    if (now - cache.lastCheck < 100) {
+    // Throttle cache checks using configured interval
+    if (now - cache.lastCheck < AUTOPLAY_CONFIG.VIDEO_CACHE_THROTTLE) {
       return cache.element;
     }
     cache.lastCheck = now;
@@ -456,9 +482,45 @@ if (!window.getCachedVideo) {
 
 if (!window.cacheVideo) {
   window.cacheVideo = function(element) {
-    window.vibootVideoCache.element = element;
-    window.vibootVideoCache.timestamp = Date.now();
+    window.autoplayVideoCache.element = element;
+    window.autoplayVideoCache.timestamp = Date.now();
     return element;
+  };
+}
+
+// ============================================================================
+// PLATFORM-SPECIFIC FALLBACK CONFIGURATIONS
+// Optimizes video finding by only using necessary fallback methods per platform
+// ============================================================================
+
+if (!window.PlatformFallbacks) {
+  window.PlatformFallbacks = {
+    // YouTube is very reliable - direct selector or platform selectors work
+    youtube: ['direct', 'platform'],
+    
+    // Netflix is mostly reliable but sometimes needs generic fallback
+    netflix: ['direct', 'platform', 'generic'],
+    
+    // Crunchyroll uses iframes but platform selectors usually work
+    crunchyroll: ['direct', 'platform', 'iframe', 'generic'],
+    
+    // Prime Video has dynamic loading, needs iframe search
+    prime: ['direct', 'platform', 'iframe', 'generic'],
+    
+    // Disney+ is reliable with direct/platform selectors
+    disneyplus: ['direct', 'platform', 'generic'],
+    
+    // HBO/Max is reliable
+    hbo: ['direct', 'platform', 'generic'],
+    
+    // Hulu is reliable
+    hulu: ['direct', 'platform', 'generic'],
+    
+    // Twitch is reliable
+    twitch: ['direct', 'platform', 'generic'],
+    
+    // Generic fallback uses full chain for unknown sites
+    generic: ['direct', 'platform', 'iframe', 'shadowDOM', 'generic']
   };
 }
 
@@ -470,7 +532,7 @@ if (!window.getStrategy) {
 }
 
 // ============================================================================
-// VIDEO FINDING - Multi-strategy with fallbacks
+// VIDEO FINDING - Multi-strategy with platform-specific fallbacks
 // ============================================================================
 
 if (!window.findVideoElement) {
@@ -479,45 +541,65 @@ if (!window.findVideoElement) {
       const cached = window.getCachedVideo();
       if (cached) return cached;
 
+      const platform = window.detectPlatform();
+      const fallbackMethods = window.PlatformFallbacks[platform] || window.PlatformFallbacks.generic;
+      const strategy = window.getStrategy();
+
       for (let attempt = 0; attempt < maxRetries; attempt++) {
-        if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 500));
+        if (attempt > 0) await new Promise(r => setTimeout(r, attempt * AUTOPLAY_CONFIG.VIDEO_FIND_RETRY_BASE_DELAY));
 
         try {
-          // Direct video selector
-          let video = document.querySelector('video');
-          if (video && isVideoVisible(video)) return window.cacheVideo(video);
-
-          // Platform-specific selectors
-          const strategy = window.getStrategy();
-          for (const sel of strategy.selectors || []) {
-            try {
-              const v = document.querySelector(sel);
-              if (v && isVideoVisible(v)) return window.cacheVideo(v);
-            } catch (e) { /* invalid selector */ }
+          // Execute only the fallback methods configured for this platform
+          for (const method of fallbackMethods) {
+            let video = null;
+            
+            switch (method) {
+              case 'direct':
+                // Direct video selector
+                video = document.querySelector('video');
+                if (video && isVideoVisible(video)) return window.cacheVideo(video);
+                break;
+                
+              case 'platform':
+                // Platform-specific selectors
+                for (const sel of strategy.selectors || []) {
+                  try {
+                    const v = document.querySelector(sel);
+                    if (v && isVideoVisible(v)) return window.cacheVideo(v);
+                  } catch (e) { /* invalid selector */ }
+                }
+                break;
+                
+              case 'iframe':
+                // Search iframes
+                video = findVideoInIframes();
+                if (video) return window.cacheVideo(video);
+                break;
+                
+              case 'shadowDOM':
+                // Search shadow DOM
+                video = findVideoInShadowDOM();
+                if (video) return window.cacheVideo(video);
+                break;
+                
+              case 'generic':
+                // Last resort: any video element
+                const allVideos = document.querySelectorAll('video');
+                for (const v of allVideos) {
+                  if (v.videoWidth > 0 || v.readyState >= 1) return window.cacheVideo(v);
+                }
+                if (allVideos.length > 0) return window.cacheVideo(allVideos[0]);
+                break;
+            }
           }
-
-          // Search iframes
-          video = findVideoInIframes();
-          if (video) return window.cacheVideo(video);
-
-          // Search shadow DOM
-          video = findVideoInShadowDOM();
-          if (video) return window.cacheVideo(video);
-
-          // Last resort: any video element
-          const allVideos = document.querySelectorAll('video');
-          for (const v of allVideos) {
-            if (v.videoWidth > 0 || v.readyState >= 1) return window.cacheVideo(v);
-          }
-          if (allVideos.length > 0) return window.cacheVideo(allVideos[0]);
         } catch (innerError) {
-          console.warn('[Viboot] Video search attempt failed:', innerError.message);
+          console.warn('[AutoPlay] Video search attempt failed:', innerError.message);
         }
       }
 
       return null;
     } catch (error) {
-      console.error('[Viboot] findVideoElement failed:', error);
+      console.error('[AutoPlay] findVideoElement failed:', error);
       return null;
     }
   };
@@ -567,21 +649,21 @@ function findVideoInShadowDOM() {
 // PAUSE / PLAY CONTROLS
 // ============================================================================
 
-if (!window.vibootPauseCalled) {
-  window.vibootPauseCalled = false;
+if (!window.autoplayPauseCalled) {
+  window.autoplayPauseCalled = false;
 }
 
 if (!window.pauseVideo) {
   window.pauseVideo = async function() {
-    if (window.vibootPauseCalled) return;
-    window.vibootPauseCalled = true;
+    if (window.autoplayPauseCalled) return;
+    window.autoplayPauseCalled = true;
 
     const isMainFrame = window.self === window.top;
     const hasVideo = document.querySelector('video');
     if (!isMainFrame && !hasVideo) return;
 
     const strategy = window.getStrategy();
-    console.log('[Viboot] Pausing with', strategy.name);
+    console.log('[AutoPlay] Pausing with', strategy.name);
 
     try {
       let video = await Promise.race([
@@ -613,7 +695,7 @@ if (!window.pauseVideo) {
         showNotification('⏸️ Timer expired - Video paused', 'success');
       }
     } catch (error) {
-      console.error('[Viboot] Pause error:', error);
+      console.error('[AutoPlay] Pause error:', error);
       showNotification('⚠️ Timer expired', 'info');
     }
   };
@@ -630,7 +712,7 @@ if (!window.playVideo) {
       
       await strategy.play(video);
     } catch (error) {
-      console.error('[Viboot] Play error:', error);
+      console.error('[AutoPlay] Play error:', error);
     }
   };
 }
@@ -683,21 +765,21 @@ function showNotification(message, type = 'info') {
     font-size: 16px;
     z-index: 2147483647;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    animation: vibootSlideIn 0.3s ease-out;
+    animation: autoplaySlideIn 0.3s ease-out;
   `;
   overlay.textContent = message;
   document.body.appendChild(overlay);
 
   // Add animation styles
-  if (!document.head.querySelector('#viboot-notification-styles')) {
+  if (!document.head.querySelector('#autoplay-notification-styles')) {
     const style = document.createElement('style');
-    style.id = 'viboot-notification-styles';
+    style.id = 'autoplay-notification-styles';
     style.textContent = `
-      @keyframes vibootSlideIn {
+      @keyframes autoplaySlideIn {
         from { transform: translateX(400px); opacity: 0; }
         to { transform: translateX(0); opacity: 1; }
       }
-      @keyframes vibootSlideOut {
+      @keyframes autoplaySlideOut {
         from { transform: translateX(0); opacity: 1; }
         to { transform: translateX(400px); opacity: 0; }
       }
@@ -706,9 +788,9 @@ function showNotification(message, type = 'info') {
   }
 
   setTimeout(() => {
-    overlay.style.animation = 'vibootSlideOut 0.3s ease-out';
+    overlay.style.animation = 'autoplaySlideOut 0.3s ease-out';
     setTimeout(() => overlay.remove(), 300);
-  }, 3000);
+  }, AUTOPLAY_CONFIG.NOTIFICATION_DURATION);
 }
 
 // ============================================================================
@@ -716,7 +798,7 @@ function showNotification(message, type = 'info') {
 // ============================================================================
 
 const OVERLAY_STYLES = `
-  .viboot-overlay {
+  .autoplay-overlay {
     position: fixed;
     top: 20px;
     right: 20px;
@@ -737,17 +819,17 @@ const OVERLAY_STYLES = `
     opacity: 0;
     transform: translateY(-10px);
   }
-  .viboot-overlay.visible { opacity: 1; transform: translateY(0); }
-  .viboot-overlay-icon { font-size: 24px; }
-  .viboot-overlay-content { display: flex; flex-direction: column; }
-  .viboot-overlay-time {
+  .autoplay-overlay.visible { opacity: 1; transform: translateY(0); }
+  .autoplay-overlay-icon { font-size: 24px; }
+  .autoplay-overlay-content { display: flex; flex-direction: column; }
+  .autoplay-overlay-time {
     font-size: 20px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: #818cf8;
   }
-  .viboot-overlay-label { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 2px; }
-  .viboot-overlay-close {
+  .autoplay-overlay-label { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 2px; }
+  .autoplay-overlay-close {
     position: absolute;
     top: -8px;
     right: -8px;
@@ -765,25 +847,47 @@ const OVERLAY_STYLES = `
     opacity: 0;
     transition: opacity 0.2s;
   }
-  .viboot-overlay:hover .viboot-overlay-close { opacity: 1; }
-  .viboot-overlay-close:hover { background: #dc2626; }
-  .viboot-overlay.warning .viboot-overlay-time { color: #f59e0b; animation: vibootPulse 1s infinite; }
-  .viboot-overlay.critical .viboot-overlay-time { color: #ef4444; animation: vibootPulse 0.5s infinite; }
-  @keyframes vibootPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .autoplay-overlay:hover .autoplay-overlay-close { opacity: 1; }
+  .autoplay-overlay-close:hover { background: #dc2626; }
+  .autoplay-overlay.warning .autoplay-overlay-time { color: #f59e0b; animation: autoplayPulse 1s infinite; }
+  .autoplay-overlay.critical .autoplay-overlay-time { color: #ef4444; animation: autoplayPulse 0.5s infinite; }
+  @keyframes autoplayPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 `;
 
-let vibootOverlay = null;
-let vibootOverlayEnabled = true; // Cache setting
+let autoplayOverlay = null;
+let autoplayOverlayEnabled = true; // Cache setting
 
-// Load overlay setting from storage
+// Overlay setting cache with TTL to reduce message queue congestion
+let overlaySettingCache = {
+  value: true,
+  timestamp: 0,
+  ttl: AUTOPLAY_CONFIG.OVERLAY_SETTING_CACHE_TTL
+};
+
+// Load overlay setting from storage with caching
 async function loadOverlaySetting() {
+  const now = Date.now();
+  
+  // Return cached value if still fresh
+  if (now - overlaySettingCache.timestamp < overlaySettingCache.ttl) {
+    autoplayOverlayEnabled = overlaySettingCache.value;
+    return;
+  }
+  
+  // Fetch fresh value
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getSettings' });
     if (response?.success) {
-      vibootOverlayEnabled = response.settings?.showOverlay !== false;
+      const newValue = response.settings?.showOverlay !== false;
+      overlaySettingCache = {
+        value: newValue,
+        timestamp: now,
+        ttl: AUTOPLAY_CONFIG.OVERLAY_SETTING_CACHE_TTL
+      };
+      autoplayOverlayEnabled = newValue;
     }
   } catch (e) {
-    vibootOverlayEnabled = true; // Default to enabled
+    autoplayOverlayEnabled = true; // Default to enabled
   }
 }
 
@@ -792,40 +896,59 @@ loadOverlaySetting();
 
 function createOverlay() {
   // Check if overlay is disabled in settings
-  if (!vibootOverlayEnabled) return;
-  if (vibootOverlay) return;
+  if (!autoplayOverlayEnabled) return;
+  if (autoplayOverlay) return;
 
   // Inject styles
-  if (!document.head.querySelector('#viboot-overlay-styles')) {
+  if (!document.head.querySelector('#autoplay-overlay-styles')) {
     const style = document.createElement('style');
-    style.id = 'viboot-overlay-styles';
+    style.id = 'autoplay-overlay-styles';
     style.textContent = OVERLAY_STYLES;
     document.head.appendChild(style);
   }
 
-  vibootOverlay = document.createElement('div');
-  vibootOverlay.className = 'viboot-overlay';
-  vibootOverlay.innerHTML = `
-    <span class="viboot-overlay-icon">😴</span>
-    <div class="viboot-overlay-content">
-      <span class="viboot-overlay-time" id="vibootTime">--:--</span>
-      <span class="viboot-overlay-label">Sleep timer</span>
-    </div>
-    <button class="viboot-overlay-close" id="vibootClose">×</button>
-  `;
-  document.body.appendChild(vibootOverlay);
-
-  // Close button
-  document.getElementById('vibootClose').addEventListener('click', (e) => {
+  autoplayOverlay = document.createElement('div');
+  autoplayOverlay.className = 'autoplay-overlay';
+  
+  // Build overlay structure safely
+  const icon = document.createElement('span');
+  icon.className = 'autoplay-overlay-icon';
+  icon.textContent = '😴';
+  
+  const content = document.createElement('div');
+  content.className = 'autoplay-overlay-content';
+  
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'autoplay-overlay-time';
+  timeSpan.id = 'autoplayTime';
+  timeSpan.textContent = '--:--';
+  
+  const label = document.createElement('span');
+  label.className = 'autoplay-overlay-label';
+  label.textContent = 'Sleep timer';
+  
+  content.appendChild(timeSpan);
+  content.appendChild(label);
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'autoplay-overlay-close';
+  closeBtn.id = 'autoplayClose';
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     hideOverlay();
     chrome.runtime.sendMessage({ action: 'stopTimer' });
   });
+  
+  autoplayOverlay.appendChild(icon);
+  autoplayOverlay.appendChild(content);
+  autoplayOverlay.appendChild(closeBtn);
+  document.body.appendChild(autoplayOverlay);
 
   // Make draggable
-  makeDraggable(vibootOverlay);
+  makeDraggable(autoplayOverlay);
 
-  requestAnimationFrame(() => vibootOverlay.classList.add('visible'));
+  requestAnimationFrame(() => autoplayOverlay.classList.add('visible'));
 }
 
 // Throttle overlay updates to reduce DOM operations
@@ -834,56 +957,56 @@ let lastOverlayRemaining = -1;
 
 function updateOverlay(remaining) {
   // Check if overlay is disabled
-  if (!vibootOverlayEnabled) return;
+  if (!autoplayOverlayEnabled) return;
   
   // Skip if same value (no visual change needed)
   if (remaining === lastOverlayRemaining) return;
   
-  // Throttle to max 1 update per 500ms (timer shows seconds, but we update twice per second max)
+  // Throttle using configured interval for better performance
   const now = Date.now();
-  if (now - lastOverlayUpdate < 500 && Math.abs(remaining - lastOverlayRemaining) < 2) return;
+  if (now - lastOverlayUpdate < AUTOPLAY_CONFIG.OVERLAY_UPDATE_THROTTLE && Math.abs(remaining - lastOverlayRemaining) < 2) return;
   
   lastOverlayUpdate = now;
   lastOverlayRemaining = remaining;
   
-  if (!vibootOverlay) createOverlay();
+  if (!autoplayOverlay) createOverlay();
   
-  const timeEl = document.getElementById('vibootTime');
+  const timeEl = document.getElementById('autoplayTime');
   if (timeEl) {
-    timeEl.textContent = window.VibootUtils.formatCountdown(remaining);
+    timeEl.textContent = window.AutoPlayUtils.formatCountdown(remaining);
   }
 
   // Only update classes when threshold is crossed
-  const wasWarning = vibootOverlay.classList.contains('warning');
-  const wasCritical = vibootOverlay.classList.contains('critical');
-  const shouldBeWarning = remaining <= 300 && remaining > 60;
-  const shouldBeCritical = remaining <= 60;
+  const wasWarning = autoplayOverlay.classList.contains('warning');
+  const wasCritical = autoplayOverlay.classList.contains('critical');
+  const shouldBeWarning = remaining <= AUTOPLAY_CONFIG.OVERLAY_WARNING_THRESHOLD && remaining > AUTOPLAY_CONFIG.OVERLAY_CRITICAL_THRESHOLD;
+  const shouldBeCritical = remaining <= AUTOPLAY_CONFIG.OVERLAY_CRITICAL_THRESHOLD;
   
   if (shouldBeCritical && !wasCritical) {
-    vibootOverlay.classList.remove('warning');
-    vibootOverlay.classList.add('critical');
+    autoplayOverlay.classList.remove('warning');
+    autoplayOverlay.classList.add('critical');
   } else if (shouldBeWarning && !wasWarning) {
-    vibootOverlay.classList.remove('critical');
-    vibootOverlay.classList.add('warning');
+    autoplayOverlay.classList.remove('critical');
+    autoplayOverlay.classList.add('warning');
   } else if (!shouldBeWarning && !shouldBeCritical && (wasWarning || wasCritical)) {
-    vibootOverlay.classList.remove('warning', 'critical');
+    autoplayOverlay.classList.remove('warning', 'critical');
   }
 }
 
 function showOverlay() {
-  if (!vibootOverlayEnabled) return;
-  if (!vibootOverlay) createOverlay();
-  if (vibootOverlay) vibootOverlay.classList.add('visible');
+  if (!autoplayOverlayEnabled) return;
+  if (!autoplayOverlay) createOverlay();
+  if (autoplayOverlay) autoplayOverlay.classList.add('visible');
 }
 
 function hideOverlay() {
-  if (vibootOverlay) vibootOverlay.classList.remove('visible');
+  if (autoplayOverlay) autoplayOverlay.classList.remove('visible');
 }
 
 function destroyOverlay() {
-  if (vibootOverlay) {
-    vibootOverlay.remove();
-    vibootOverlay = null;
+  if (autoplayOverlay) {
+    autoplayOverlay.remove();
+    autoplayOverlay = null;
   }
 }
 
@@ -892,7 +1015,7 @@ function makeDraggable(el) {
   let isDragging = false;
 
   el.addEventListener('mousedown', (e) => {
-    if (e.target.classList.contains('viboot-overlay-close')) return;
+    if (e.target.classList.contains('autoplay-overlay-close')) return;
     isDragging = true;
     pos = { x: e.clientX - el.offsetLeft, y: e.clientY - el.offsetTop };
   });
@@ -914,10 +1037,10 @@ function makeDraggable(el) {
 if (!window.showCustomTimerPrompt) {
   window.showCustomTimerPrompt = function(callback) {
     // Remove existing modals
-    document.querySelectorAll('[data-viboot-modal]').forEach(m => m.remove());
+    document.querySelectorAll('[data-autoplay-modal]').forEach(m => m.remove());
 
     const modal = document.createElement('div');
-    modal.setAttribute('data-viboot-modal', 'true');
+    modal.setAttribute('data-autoplay-modal', 'true');
     modal.style.cssText = `
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
@@ -939,28 +1062,56 @@ if (!window.showCustomTimerPrompt) {
       width: 90%;
     `;
 
-    dialog.innerHTML = `
-      <h2 style="margin-top: 0; color: #333;">Set Custom Timer</h2>
-      <p style="color: #666; margin: 10px 0;">Enter duration (1 second to 24 hours)</p>
-      <input type="text" id="vibootTimerInput" placeholder="e.g., 1s, 30s, 5m, 1h, 1h30m"
-             style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box;">
-      <p style="color: #999; font-size: 13px; margin: 10px 0;">Format: 1s, 30s, 5m, 2h, or combined: 1h30m</p>
-      <div id="vibootError" style="display: none; color: #f44336; background: #ffebee; padding: 10px; border-radius: 4px; margin: 10px 0;"></div>
-      <div style="display: flex; gap: 10px; margin-top: 20px;">
-        <button id="vibootSubmit" style="flex: 1; padding: 12px; background: #6366f1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;">
-          Set Timer
-        </button>
-        <button id="vibootCancel" style="flex: 1; padding: 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
-          Cancel
-        </button>
-      </div>
-    `;
+    // Build dialog structure safely
+    const title = document.createElement('h2');
+    title.style.cssText = 'margin-top: 0; color: #333;';
+    title.textContent = 'Set Custom Timer';
+    
+    const description = document.createElement('p');
+    description.style.cssText = 'color: #666; margin: 10px 0;';
+    description.textContent = 'Enter duration (1 second to 24 hours)';
+    
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'autoplayTimerInput';
+    input.placeholder = 'e.g., 1s, 30s, 5m, 1h, 1h30m';
+    input.style.cssText = 'width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box;';
+    
+    const hint = document.createElement('p');
+    hint.style.cssText = 'color: #999; font-size: 13px; margin: 10px 0;';
+    hint.textContent = 'Format: 1s, 30s, 5m, 2h, or combined: 1h30m';
+    
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'autoplayError';
+    errorDiv.style.cssText = 'display: none; color: #f44336; background: #ffebee; padding: 10px; border-radius: 4px; margin: 10px 0;';
+    
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.cssText = 'display: flex; gap: 10px; margin-top: 20px;';
+    
+    const submitBtn = document.createElement('button');
+    submitBtn.id = 'autoplaySubmit';
+    submitBtn.style.cssText = 'flex: 1; padding: 12px; background: #6366f1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;';
+    submitBtn.textContent = 'Set Timer';
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.id = 'autoplayCancel';
+    cancelBtn.style.cssText = 'flex: 1; padding: 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;';
+    cancelBtn.textContent = 'Cancel';
+    
+    buttonContainer.appendChild(submitBtn);
+    buttonContainer.appendChild(cancelBtn);
+    
+    dialog.appendChild(title);
+    dialog.appendChild(description);
+    dialog.appendChild(input);
+    dialog.appendChild(hint);
+    dialog.appendChild(errorDiv);
+    dialog.appendChild(buttonContainer);
 
     modal.appendChild(dialog);
     document.body.appendChild(modal);
 
-    const input = dialog.querySelector('#vibootTimerInput');
-    const errorEl = dialog.querySelector('#vibootError');
+    const errorEl = dialog.querySelector('#autoplayError');
     input.focus();
 
     function showError(msg) {
@@ -977,7 +1128,7 @@ if (!window.showCustomTimerPrompt) {
       const duration = input.value.trim();
       if (!duration) { showError('⚠️ Please enter a duration'); return; }
 
-      const seconds = window.VibootUtils.parseCustomDuration(duration);
+      const seconds = window.AutoPlayUtils.parseCustomDuration(duration);
       if (seconds < 0) { showError('❌ Invalid format. Use: 1s, 30s, 5m, 2h, or 1h30m'); return; }
 
       closeDialog();
@@ -985,13 +1136,13 @@ if (!window.showCustomTimerPrompt) {
 
       chrome.runtime.sendMessage({ action: 'startTimer', duration: seconds }, (response) => {
         if (response?.success) {
-          showNotification('⏱️ Timer started for ' + window.VibootUtils.formatDuration(seconds));
+          showNotification('⏱️ Timer started for ' + window.AutoPlayUtils.formatDuration(seconds));
         }
       });
     }
 
-    dialog.querySelector('#vibootSubmit').addEventListener('click', submitTimer);
-    dialog.querySelector('#vibootCancel').addEventListener('click', closeDialog);
+    dialog.querySelector('#autoplaySubmit').addEventListener('click', submitTimer);
+    dialog.querySelector('#autoplayCancel').addEventListener('click', closeDialog);
     input.addEventListener('keypress', (e) => { if (e.key === 'Enter') submitTimer(); });
     modal.addEventListener('click', (e) => { if (e.target === modal) closeDialog(); });
   };
@@ -1001,14 +1152,31 @@ if (!window.showCustomTimerPrompt) {
 // MESSAGE LISTENER
 // ============================================================================
 
-if (!window.vibootMessageListenerAdded) {
-  window.vibootMessageListenerAdded = true;
+if (!window.autoplayMessageListenerAdded) {
+  window.autoplayMessageListenerAdded = true;
 
-  console.log('[Viboot] Streaming Controller loaded on:', window.location.href);
-  console.log('[Viboot] Detected platform:', window.detectPlatform());
+  console.log('[AutoPlay] Streaming Controller loaded on:', window.location.href);
+  console.log('[AutoPlay] Detected platform:', window.detectPlatform());
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('[Viboot] Message received:', request.action);
+    // Validate sender is from this extension
+    if (!sender.id || sender.id !== chrome.runtime.id) {
+      console.warn('[AutoPlay] Rejected message from invalid sender:', sender);
+      sendResponse({ success: false, error: 'Invalid sender' });
+      return;
+    }
+    
+    // Validate message structure
+    if (!request || typeof request !== 'object' || !request.action || typeof request.action !== 'string') {
+      console.warn('[AutoPlay] Rejected invalid message format');
+      sendResponse({ success: false, error: 'Invalid message format' });
+      return;
+    }
+    
+    // Log only important actions (not routine updates)
+    if (!['updateOverlay', 'timerUpdate'].includes(request.action)) {
+      console.log('[AutoPlay] Message received:', request.action);
+    }
 
     // Check if we're in main frame (for overlay-related actions)
     const isMainFrame = window.self === window.top;
@@ -1017,8 +1185,8 @@ if (!window.vibootMessageListenerAdded) {
       switch (request.action) {
         case 'timerStarted':
         case 'startTimer':
-          window.vibootPauseCalled = false;
-          console.log('[Viboot] Timer started - pause flag reset');
+          window.autoplayPauseCalled = false;
+          console.log('[AutoPlay] Timer started - pause flag reset');
           sendResponse({ success: true });
           break;
 
@@ -1049,17 +1217,23 @@ if (!window.vibootMessageListenerAdded) {
           break;
 
         case 'refreshOverlaySetting':
-          // Update cached overlay setting immediately
+          // Update cached overlay setting immediately and invalidate cache
           if (request.showOverlay !== undefined) {
-            vibootOverlayEnabled = request.showOverlay;
-            console.log('[Viboot] Overlay setting updated:', vibootOverlayEnabled);
+            autoplayOverlayEnabled = request.showOverlay;
+            // Invalidate cache to force fresh fetch on next loadOverlaySetting()
+            overlaySettingCache = {
+              value: request.showOverlay,
+              timestamp: Date.now(),
+              ttl: AUTOPLAY_CONFIG.OVERLAY_SETTING_CACHE_TTL
+            };
+            console.log('[AutoPlay] Overlay setting updated:', autoplayOverlayEnabled);
             
             // If disabled, hide any existing overlay
-            if (!vibootOverlayEnabled && isMainFrame) {
+            if (!autoplayOverlayEnabled && isMainFrame) {
               hideOverlay();
             }
             // If enabled and timer is active, show overlay
-            if (vibootOverlayEnabled && isMainFrame) {
+            if (autoplayOverlayEnabled && isMainFrame) {
               chrome.runtime.sendMessage({ action: 'getTimerStatus' }, (response) => {
                 if (response?.success && response.status?.active) {
                   showOverlay();
@@ -1076,7 +1250,7 @@ if (!window.vibootMessageListenerAdded) {
           if (isMainFrame && request.remaining !== undefined) {
             // Reload setting in case it changed
             loadOverlaySetting().then(() => {
-              if (vibootOverlayEnabled) {
+              if (autoplayOverlayEnabled) {
                 showOverlay();
                 updateOverlay(request.remaining);
               }
@@ -1108,7 +1282,7 @@ if (!window.vibootMessageListenerAdded) {
           sendResponse({ success: false, error: 'Unknown action' });
       }
     } catch (error) {
-      console.error('[Viboot] Error handling message:', error);
+      console.error('[AutoPlay] Error handling message:', error);
       sendResponse({ success: false, error: error.message });
     }
 
@@ -1117,14 +1291,25 @@ if (!window.vibootMessageListenerAdded) {
 
   // Check for existing timer on load (only in main frame)
   if (window.self === window.top) {
-    // Reload setting first, then check timer
-    loadOverlaySetting().then(() => {
-      chrome.runtime.sendMessage({ action: 'getTimerStatus' }, (response) => {
-        if (response?.success && response.status?.active && vibootOverlayEnabled) {
-          showOverlay();
-          updateOverlay(response.status.remaining);
-        }
+    // Use requestIdleCallback to defer initialization until browser is truly idle
+    // This prevents interfering with YouTube's preload resources
+    const initializeTimer = () => {
+      // Reload setting first, then check timer
+      loadOverlaySetting().then(() => {
+        chrome.runtime.sendMessage({ action: 'getTimerStatus' }, (response) => {
+          if (response?.success && response.status?.active && autoplayOverlayEnabled) {
+            showOverlay();
+            updateOverlay(response.status.remaining);
+          }
+        });
       });
-    });
+    };
+    
+    // Use requestIdleCallback if available, otherwise setTimeout as fallback
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(initializeTimer, { timeout: 2000 });
+    } else {
+      setTimeout(initializeTimer, 1000);
+    }
   }
 }

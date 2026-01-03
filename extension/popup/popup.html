@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Viboot</title>
+  <title>AutoPlay Control</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -13,47 +13,44 @@
     <header class="header">
       <div class="header-left">
         <span class="logo">😴</span>
-        <span class="app-name">Viboot</span>
+        <span class="app-name">AutoPlay Control</span>
       </div>
       <div class="header-right">
-        <span class="platform-badge" id="platformBadge">Detecting...</span>
-        <button class="theme-toggle" id="themeToggle" title="Toggle theme">
-          <span class="theme-icon" id="themeIcon">🌙</span>
+        <button class="settings-btn" id="settingsBtn" aria-label="Open settings">
+          <span class="settings-icon" aria-hidden="true">⚙️</span>
         </button>
       </div>
     </header>
 
     <!-- Timer Display -->
     <section class="timer-display">
-      <div class="timer-ring" id="timerRing">
+      <button class="timer-ring" id="timerRing" aria-label="Start quick timer">
         <svg viewBox="0 0 120 120">
           <circle class="ring-bg" cx="60" cy="60" r="54" />
           <circle class="ring-progress" id="ringProgress" cx="60" cy="60" r="54" />
         </svg>
         <div class="timer-text">
-          <span class="timer-value" id="timerValue">--:--</span>
-          <span class="timer-label" id="timerLabel">No timer active</span>
+          <span class="timer-value" id="timerValue">30m</span>
+          <span class="timer-label" id="timerLabel">Tap to start</span>
         </div>
-      </div>
+      </button>
     </section>
 
     <!-- Timer Controls (when active) -->
     <section class="timer-controls hidden" id="timerControls">
-      <button class="control-btn extend" id="extendBtn">
-        <span class="control-icon">+10</span>
+      <button class="control-btn extend" id="extendBtn" aria-label="Extend timer by 10 minutes">
+        <span class="control-icon" aria-hidden="true">+10</span>
         <span class="control-label">min</span>
       </button>
-      <button class="control-btn stop" id="stopBtn">
-        <span class="control-icon">■</span>
+      <button class="control-btn stop" id="stopBtn" aria-label="Stop timer">
+        <span class="control-icon" aria-hidden="true">■</span>
         <span class="control-label">Stop</span>
       </button>
     </section>
 
     <!-- Quick Presets -->
     <section class="presets-section" id="presetsSection">
-      <div class="presets-grid" id="presetsGrid">
-        <!-- Presets are dynamically rendered by popup.js -->
-      </div>
+      <div class="presets-grid" id="presetsGrid"></div>
     </section>
 
     <!-- Custom Input -->
@@ -74,120 +71,10 @@
       <p class="input-hint" id="inputHint">Format: 30s, 5m, 1h 30m (1 second - 24 hours)</p>
     </section>
 
-    <!-- Divider -->
-    <div class="divider"></div>
-
-    <!-- Settings Panel -->
-    <section class="settings-section">
-      <button class="settings-toggle" id="settingsToggle">
-        <span>⚙️ Settings</span>
-        <span class="toggle-arrow" id="toggleArrow">▼</span>
-      </button>
-      
-      <div class="settings-panel hidden" id="settingsPanel">
-        <!-- Customize Presets Section (moved to top) -->
-        <div class="setting-row presets-header">
-          <label class="setting-label">⚡ Quick Presets</label>
-          <button class="edit-presets-btn" id="editPresetsBtn" title="Edit presets">✏️ Edit</button>
-        </div>
-        
-        <div class="presets-editor hidden" id="presetsEditor">
-          <div class="presets-editor-grid">
-            <div class="preset-edit-row">
-              <span class="preset-number">1</span>
-              <input type="text" class="preset-input" id="preset1" placeholder="15m">
-            </div>
-            <div class="preset-edit-row">
-              <span class="preset-number">2</span>
-              <input type="text" class="preset-input" id="preset2" placeholder="30m">
-            </div>
-            <div class="preset-edit-row">
-              <span class="preset-number">3</span>
-              <input type="text" class="preset-input" id="preset3" placeholder="45m">
-            </div>
-            <div class="preset-edit-row">
-              <span class="preset-number">4</span>
-              <input type="text" class="preset-input" id="preset4" placeholder="1h">
-            </div>
-            <div class="preset-edit-row">
-              <span class="preset-number">5</span>
-              <input type="text" class="preset-input" id="preset5" placeholder="1h 30m">
-            </div>
-            <div class="preset-edit-row">
-              <span class="preset-number">6</span>
-              <input type="text" class="preset-input" id="preset6" placeholder="2h">
-            </div>
-          </div>
-          <div class="presets-editor-actions">
-            <button class="save-presets-btn" id="savePresetsBtn">💾 Save</button>
-            <button class="reset-presets-btn" id="resetPresetsBtn">↩️ Reset</button>
-          </div>
-          <p class="setting-hint">Format: 30s, 5m, 1h 30m (1s to 24h)</p>
-        </div>
-        
-        <div class="divider-thin"></div>
-        
-        <div class="setting-row">
-          <label class="setting-label" for="showOverlay">Show overlay</label>
-          <label class="toggle-switch">
-            <input type="checkbox" id="showOverlay" checked title="Show countdown overlay on video">
-            <span class="slider"></span>
-          </label>
-        </div>
-        <div class="setting-row">
-          <label class="setting-label" for="showNotifications">Notifications</label>
-          <label class="toggle-switch">
-            <input type="checkbox" id="showNotifications" checked title="Show notification when timer expires">
-            <span class="slider"></span>
-          </label>
-        </div>
-        <div class="setting-row">
-          <label class="setting-label" for="autoPauseNext">Auto-pause next episode</label>
-          <label class="toggle-switch">
-            <input type="checkbox" id="autoPauseNext" title="Automatically pause when next episode starts">
-            <span class="slider"></span>
-          </label>
-        </div>
-      </div>
-    </section>
-
-    <!-- Last Timer Bar -->
-    <div class="last-timer-bar hidden" id="lastTimerBar">
-      <span class="last-timer-icon">🕐</span>
-      <span class="last-timer-text">
-        Last: <span id="lastTime">--</span> · 
-        <span id="lastSite">--</span> · 
-        <span id="lastDuration">--</span>
-      </span>
-    </div>
-
     <!-- Footer -->
     <footer class="footer">
-      <span class="footer-text">v2.0</span>
-      <div class="social-links" id="socialLinks">
-        <button class="social-btn share-btn" id="shareBtn" title="Copy share link">
-          <img src="../assets/icons/social/share.svg" alt="Share" class="social-icon">
-        </button>
-        <a href="#" class="social-btn" id="twitterBtn" target="_blank" rel="noopener noreferrer" title="Twitter">
-          <img src="../assets/icons/social/twitter.svg" alt="Twitter" class="social-icon">
-        </a>
-        <a href="#" class="social-btn" id="discordBtn" target="_blank" rel="noopener noreferrer" title="Discord">
-          <img src="../assets/icons/social/discord.svg" alt="Discord" class="social-icon">
-        </a>
-        <a href="#" class="social-btn" id="githubBtn" target="_blank" rel="noopener noreferrer" title="GitHub">
-          <img src="../assets/icons/social/github.svg" alt="GitHub" class="social-icon">
-        </a>
-        <a href="#" class="social-btn" id="emailBtn" title="Email">
-          <img src="../assets/icons/social/email.svg" alt="Email" class="social-icon">
-        </a>
-      </div>
+      <span class="platform-badge" id="platformBadge">Detecting...</span>
     </footer>
-
-    <!-- Share Toast -->
-    <div class="share-toast hidden" id="shareToast">
-      <span class="share-toast-icon">✓</span>
-      <span class="share-toast-text">Link copied!</span>
-    </div>
 
   </div>
   

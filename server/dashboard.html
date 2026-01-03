@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoPlay Analytics Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      color: #667eea;
+      font-size: 28px;
+      margin-bottom: 5px;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .auth-container {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      max-width: 400px;
+      margin: 100px auto;
+      text-align: center;
+    }
+
+    .auth-container h2 {
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .auth-container input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
+
+    .auth-container button {
+      width: 100%;
+      padding: 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .auth-container button:hover {
+      background: #5568d3;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #333;
+    }
+
+    .stat-subtext {
+      font-size: 13px;
+      color: #999;
+      margin-top: 5px;
+    }
+
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+    .warning { color: #f59e0b; }
+
+    .section {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      background: #f9fafb;
+      color: #666;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 12px;
+      border-top: 1px solid #f0f0f0;
+      font-size: 14px;
+    }
+
+    tr:hover {
+      background: #f9fafb;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge.success { background: #d1fae5; color: #065f46; }
+    .badge.error { background: #fee2e2; color: #991b1b; }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error-message {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .refresh-btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      float: right;
+    }
+
+    .refresh-btn:hover {
+      background: #5568d3;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Authentication -->
+  <div id="authContainer" class="auth-container">
+    <h2>🔐 Dashboard Access</h2>
+    <p style="color: #666; margin-bottom: 20px;">Enter your API URL and admin token</p>
+    <input type="text" id="apiUrl" placeholder="API URL (e.g., https://autoplay.onrender.com)" value="http://localhost:3000">
+    <input type="password" id="adminToken" placeholder="Admin Token (or leave empty for local dev)">
+    <button onclick="authenticate()">Access Dashboard</button>
+  </div>
+
+  <!-- Dashboard (hidden until authenticated) -->
+  <div id="dashboard" class="hidden">
+    <div class="container">
+      <header>
+        <h1>⏱️ AutoPlay Analytics</h1>
+        <p class="subtitle">Real-time extension performance metrics</p>
+      </header>
+
+      <div id="errorMessage" class="error-message hidden"></div>
+
+      <!-- Quick Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Events (24h)</div>
+          <div class="stat-value" id="totalEvents">-</div>
+          <div class="stat-subtext">Sync attempts</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Success Rate</div>
+          <div class="stat-value success" id="successRate">-</div>
+          <div class="stat-subtext"><span id="successful">0</span> successful</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Failed Syncs</div>
+          <div class="stat-value error" id="failed">-</div>
+          <div class="stat-subtext">Requires attention</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg Duration</div>
+          <div class="stat-value" id="avgDuration">-</div>
+          <div class="stat-subtext">Response time</div>
+        </div>
+      </div>
+
+      <!-- Platform Stats -->
+      <div class="section">
+        <h2>📊 Platform Statistics <button class="refresh-btn" onclick="loadData()">🔄 Refresh</button></h2>
+        <div id="platformStatsLoading" class="loading">
+          <div class="spinner"></div>
+          Loading platform data...
+        </div>
+        <table id="platformStatsTable" class="hidden">
+          <thead>
+            <tr>
+              <th>Platform</th>
+              <th>Total Requests</th>
+              <th>Success Rate</th>
+              <th>Avg Duration</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="platformStatsBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Recent Errors -->
+      <div class="section">
+        <h2>🚨 Recent Errors (Last 7 Days)</h2>
+        <div id="errorsLoading" class="loading">
+          <div class="spinner"></div>
+          Loading error data...
+        </div>
+        <table id="errorsTable" class="hidden">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Event</th>
+              <th>Platform</th>
+              <th>Error Type</th>
+              <th>Message</th>
+              <th>Retries</th>
+            </tr>
+          </thead>
+          <tbody id="errorsBody"></tbody>
+        </table>
+        <div id="noErrors" class="hidden" style="text-align: center; padding: 40px; color: #10b981; font-weight: 600;">
+          ✓ No errors in the last 7 days!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let API_BASE = 'http://localhost:3000';
+    let ADMIN_TOKEN = '';
+
+    function authenticate() {
+      API_BASE = document.getElementById('apiUrl').value.trim();
+      ADMIN_TOKEN = document.getElementById('adminToken').value.trim();
+
+      // Store in localStorage
+      localStorage.setItem('viboot_api_url', API_BASE);
+      if (ADMIN_TOKEN) {
+        localStorage.setItem('viboot_admin_token', ADMIN_TOKEN);
+      }
+
+      document.getElementById('authContainer').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      
+      loadData();
+    }
+
+    async function fetchWithAuth(endpoint) {
+      const url = `${API_BASE}${endpoint}`;
+      const headers = {};
+      if (ADMIN_TOKEN) {
+        headers['Authorization'] = `Bearer ${ADMIN_TOKEN}`;
+      }
+      const response = await fetch(url, { headers });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }
+
+    async function loadData() {
+      try {
+        document.getElementById('errorMessage').classList.add('hidden');
+        
+        // Load quick stats
+        const quickStats = await fetchWithAuth('/api/metrics/quick');
+        if (quickStats.success && quickStats.data) {
+          document.getElementById('totalEvents').textContent = quickStats.data.total_events;
+          document.getElementById('successRate').textContent = quickStats.data.success_rate + '%';
+          document.getElementById('successful').textContent = quickStats.data.successful;
+          document.getElementById('failed').textContent = quickStats.data.failed;
+          document.getElementById('avgDuration').textContent = quickStats.data.avg_duration_ms + 'ms';
+        }
+
+        // Load platform stats
+        const platformStats = await fetchWithAuth('/api/metrics/platforms');
+        if (platformStats.success && platformStats.data) {
+          const tbody = document.getElementById('platformStatsBody');
+          tbody.innerHTML = platformStats.data.map(p => `
+            <tr>
+              <td><strong>${p.platform}</strong></td>
+              <td>${p.total_requests}</td>
+              <td><span class="${p.success_rate >= 95 ? 'success' : 'error'}">${p.success_rate}%</span></td>
+              <td>${Math.round(p.avg_duration_ms)}ms</td>
+              <td><span class="badge ${p.success_rate >= 95 ? 'success' : 'error'}">${p.success_rate >= 95 ? 'Healthy' : 'Issues'}</span></td>
+            </tr>
+          `).join('');
+          document.getElementById('platformStatsLoading').classList.add('hidden');
+          document.getElementById('platformStatsTable').classList.remove('hidden');
+        }
+
+        // Load recent errors
+        const errors = await fetchWithAuth('/api/metrics/errors');
+        if (errors.success && errors.data) {
+          if (errors.data.length === 0) {
+            document.getElementById('errorsLoading').classList.add('hidden');
+            document.getElementById('noErrors').classList.remove('hidden');
+          } else {
+            const tbody = document.getElementById('errorsBody');
+            tbody.innerHTML = errors.data.map(e => `
+              <tr>
+                <td>${new Date(e.created_at).toLocaleString()}</td>
+                <td><code>${e.event_name}</code></td>
+                <td>${e.platform || '-'}</td>
+                <td><span class="badge error">${e.error_type}</span></td>
+                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;">${e.error_message}</td>
+                <td>${e.retry_count || 0}</td>
+              </tr>
+            `).join('');
+            document.getElementById('errorsLoading').classList.add('hidden');
+            document.getElementById('errorsTable').classList.remove('hidden');
+          }
+        }
+      } catch (error) {
+        const errorMsg = document.getElementById('errorMessage');
+        errorMsg.textContent = `Failed to load data: ${error.message}. Check your API URL and token.`;
+        errorMsg.classList.remove('hidden');
+      }
+    }
+
+    // Auto-load from localStorage on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedUrl = localStorage.getItem('viboot_api_url');
+      const savedToken = localStorage.getItem('viboot_admin_token');
+      
+      if (savedUrl) {
+        document.getElementById('apiUrl').value = savedUrl;
+      }
+      if (savedToken) {
+        document.getElementById('adminToken').value = savedToken;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 /**
- * Viboot Storage Utility
+ * AutoPlay Video Control - Storage Utility
  * Wrapper around chrome.storage.local with type safety and defaults
  */
 
@@ -28,7 +28,7 @@ export async function get(key) {
     const result = await chrome.storage.local.get([key]);
     return result[key] ?? DEFAULTS[key] ?? null;
   } catch (error) {
-    console.error(`[Viboot] Storage get error for key "${key}":`, error);
+    console.error(`[AutoPlay] Storage get error for key "${key}":`, error);
     return DEFAULTS[key] ?? null;
   }
 }
@@ -44,7 +44,7 @@ export async function set(key, value) {
     await chrome.storage.local.set({ [key]: value });
     return true;
   } catch (error) {
-    console.error(`[Viboot] Storage set error for key "${key}":`, error);
+    console.error(`[AutoPlay] Storage set error for key "${key}":`, error);
     return false;
   }
 }
@@ -59,7 +59,7 @@ export async function remove(key) {
     await chrome.storage.local.remove(key);
     return true;
   } catch (error) {
-    console.error(`[Viboot] Storage remove error for key "${key}":`, error);
+    console.error(`[AutoPlay] Storage remove error for key "${key}":`, error);
     return false;
   }
 }
@@ -121,7 +121,7 @@ export async function clearAll() {
     await chrome.storage.local.clear();
     return true;
   } catch (error) {
-    console.error('[Viboot] Storage clear error:', error);
+    console.error('[AutoPlay] Storage clear error:', error);
     return false;
   }
 }

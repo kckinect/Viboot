@@ -1,13 +1,15 @@
 {
-  "name": "viboot-server",
+  "name": "autoplay-server",
   "version": "1.0.0",
-  "description": "Remote configuration API for Viboot Chrome Extension",
+  "description": "Remote configuration API for AutoPlay Video Control Chrome Extension",
   "main": "api.js",
   "scripts": {
     "start": "node api.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^4.18.2"
   },
   "engines": {

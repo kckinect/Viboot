@@ -58,7 +58,7 @@ async function createContextMenus(retryCount = 0) {
     
     // Create parent menu
     chrome.contextMenus.create({
-      id: 'autoplay-parent',
+      id: 'viboot-parent',
       title: '⏱️ Set Timer',
       contexts: ['page', 'video']
     });
@@ -70,8 +70,8 @@ async function createContextMenus(retryCount = 0) {
   // Create menu items for each preset
   presets.forEach((seconds, index) => {
     chrome.contextMenus.create({
-      id: `autoplay-preset-${index}`,
-      parentId: 'autoplay-parent',
+      id: `viboot-preset-${index}`,
+      parentId: 'viboot-parent',
       title: formatSecondsToDisplay(seconds),
       contexts: ['page', 'video']
     });
@@ -79,41 +79,41 @@ async function createContextMenus(retryCount = 0) {
   
   // Add separator
   chrome.contextMenus.create({
-    id: 'autoplay-separator',
-    parentId: 'autoplay-parent',
+    id: 'viboot-separator',
+    parentId: 'viboot-parent',
     type: 'separator',
     contexts: ['page', 'video']
   });
   
   // Add custom duration option
   chrome.contextMenus.create({
-    id: 'autoplay-custom',
-    parentId: 'autoplay-parent',
+    id: 'viboot-custom',
+    parentId: 'viboot-parent',
     title: '⚙️ Custom Duration...',
     contexts: ['page', 'video']
   });
   } catch (error) {
-    console.error('[AutoPlay] Context menu creation error:', error.message);
+    console.error('[Viboot] Context menu creation error:', error.message);
     
     // Retry with exponential backoff (using configured limits)
     if (retryCount < SERVICE_WORKER_CONFIG.CONTEXT_MENU.MAX_RETRIES) {
       const delay = Math.pow(2, retryCount) * SERVICE_WORKER_CONFIG.CONTEXT_MENU.RETRY_BASE_DELAY;
-      console.log(`[AutoPlay] Retrying context menu creation in ${delay}ms (attempt ${retryCount + 1}/${SERVICE_WORKER_CONFIG.CONTEXT_MENU.MAX_RETRIES})`);
+      console.log(`[Viboot] Retrying context menu creation in ${delay}ms (attempt ${retryCount + 1}/${SERVICE_WORKER_CONFIG.CONTEXT_MENU.MAX_RETRIES})`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return createContextMenus(retryCount + 1);
     }
     
-    console.error(`[AutoPlay] Failed to create context menus after ${SERVICE_WORKER_CONFIG.CONTEXT_MENU.MAX_RETRIES} attempts`);
+    console.error(`[Viboot] Failed to create context menus after ${SERVICE_WORKER_CONFIG.CONTEXT_MENU.MAX_RETRIES} attempts`);
   }
 }
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (!info.menuItemId.toString().startsWith('autoplay-')) return;
+  if (!info.menuItemId.toString().startsWith('viboot-')) return;
   
   const menuId = info.menuItemId.toString();
   
-  if (menuId === 'autoplay-custom') {
+  if (menuId === 'viboot-custom') {
     // Inject prompt for custom duration
     try {
       await chrome.scripting.executeScript({
@@ -130,13 +130,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         }
       });
     } catch (error) {
-      console.error('[AutoPlay] Failed to show custom prompt:', error);
+      console.error('[Viboot] Failed to show custom prompt:', error);
     }
     return;
   }
   
-  if (menuId.startsWith('autoplay-preset-')) {
-    const index = parseInt(menuId.replace('autoplay-preset-', ''), 10);
+  if (menuId.startsWith('viboot-preset-')) {
+    const index = parseInt(menuId.replace('viboot-preset-', ''), 10);
     const result = await chrome.storage.local.get('timerPresets');
     const presets = result.timerPresets || DEFAULT_PRESETS;
     const seconds = presets[index];
@@ -162,36 +162,36 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 // Run immediately when extension is installed/updated
 chrome.runtime.onInstalled.addListener(async () => {
   try {
-    console.log("[AutoPlay] Extension installed. Starting initial setup...");
+    console.log("[Viboot] Extension installed. Starting initial setup...");
     
     // Create context menus
     await createContextMenus();
     
     // Sync remote config (non-blocking)
     ConfigManager.syncConfig().catch(e => 
-      console.warn('[AutoPlay] Initial config sync failed:', e.message)
+      console.warn('[Viboot] Initial config sync failed:', e.message)
     );
     
     // Schedule daily config sync (every 24 hours)
     await chrome.alarms.create('dailyConfigSync', { periodInMinutes: 1440 });
     
-    console.log("[AutoPlay] Setup complete.");
+    console.log("[Viboot] Setup complete.");
   } catch (error) {
-    console.error('[AutoPlay] Installation error:', error);
+    console.error('[Viboot] Installation error:', error);
   }
 });
 
 // Restore timer when service worker starts (browser restart)
 chrome.runtime.onStartup.addListener(async () => {
-  console.log("[AutoPlay] Browser started. Checking for active timer...");
+  console.log("[Viboot] Browser started. Checking for active timer...");
   await timerEngine.restoreTimer();
   
   // Proactive config refresh check on startup
   const needsSync = await ConfigManager.needsRefresh();
   if (needsSync) {
-    console.log('[AutoPlay] Config is stale, triggering sync...');
+    console.log('[Viboot] Config is stale, triggering sync...');
     ConfigManager.syncConfig().catch(e => 
-      console.warn('[AutoPlay] Startup config sync failed:', e.message)
+      console.warn('[Viboot] Startup config sync failed:', e.message)
     );
   }
 });
@@ -203,14 +203,14 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   try {
     if (alarm.name === 'dailyConfigSync') {
-      console.log("[AutoPlay] Running daily config sync...");
+      console.log("[Viboot] Running daily config sync...");
       await ConfigManager.syncConfig();
-    } else if (alarm.name.startsWith('autoplay')) {
-      // Handle timer alarms (autoplayTimerTick, autoplayTimerExpiry)
+    } else if (alarm.name.startsWith('viboot')) {
+      // Handle timer alarms (vibootTimerTick, vibootTimerExpiry)
       await timerEngine.handleAlarm(alarm.name);
     }
   } catch (error) {
-    console.error('[AutoPlay] Alarm handler error:', error);
+    console.error('[Viboot] Alarm handler error:', error);
   }
 });
 
@@ -221,14 +221,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Validate sender is from this extension
   if (!sender.id || sender.id !== chrome.runtime.id) {
-    console.warn('[AutoPlay] Rejected message from invalid sender:', sender);
+    console.warn('[Viboot] Rejected message from invalid sender:', sender);
     sendResponse({ success: false, error: 'Invalid sender' });
     return;
   }
   
   // Validate message structure
   if (!message || typeof message !== 'object' || !message.action || typeof message.action !== 'string') {
-    console.warn('[AutoPlay] Rejected invalid message format');
+    console.warn('[Viboot] Rejected invalid message format');
     sendResponse({ success: false, error: 'Invalid message format' });
     return;
   }
@@ -247,8 +247,6 @@ const ALLOWED_ACTIONS = new Set([
   'startTimer',
   'stopTimer',
   'extendTimer',
-  'pauseTimer',
-  'resumeTimer',
   'getTimerStatus',
   'syncConfig',
   'getSelectors',
@@ -359,21 +357,6 @@ async function handleMessage(message, sender) {
       return { success: true, timer };
     }
     
-    
-    case 'pauseTimer': {
-      try {
-        const timer = await timerEngine.pauseTimer();
-        return { success: true, timer };
-      } catch (error) {
-        console.error('[AutoPlay] pauseTimer error:', error);
-        return { success: false, error: error.message };
-      }
-    }
-    
-    case 'resumeTimer': {
-      const timer = await timerEngine.resumeTimer();
-      return { success: true, timer };
-    }
     case 'getTimerStatus': {
       const status = await timerEngine.getTimerStatus();
       return { success: true, status };
