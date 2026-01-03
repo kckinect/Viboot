@@ -4,6 +4,7 @@
  */
 
 import { trackPageView, trackSettingChange } from '../utils/analytics.js';
+import { parseTimeInput, formatSecondsToDisplay } from '../utils/time-utils.js';
 
 // ============================================
 // CONSTANTS
@@ -430,47 +431,6 @@ async function resetPresets() {
     console.error('[AutoPlay Settings] Error resetting presets:', error);
     showToast('❌', 'Error resetting presets');
   }
-}
-
-// ============================================
-// TIME PARSING
-// ============================================
-
-function parseTimeInput(input) {
-  input = input.toLowerCase().trim();
-  let totalSeconds = 0;
-  
-  // Extract hours, minutes, seconds
-  const matches = {
-    hours: input.match(/(\d+)\s*h/),
-    minutes: input.match(/(\d+)\s*m(?!s)/),
-    seconds: input.match(/(\d+)\s*s/)
-  };
-  
-  if (matches.hours) totalSeconds += parseInt(matches.hours[1]) * 3600;
-  if (matches.minutes) totalSeconds += parseInt(matches.minutes[1]) * 60;
-  if (matches.seconds) totalSeconds += parseInt(matches.seconds[1]);
-  
-  // If no units, assume minutes
-  if (totalSeconds === 0) {
-    const numberMatch = input.match(/^\d+$/);
-    if (numberMatch) totalSeconds = parseInt(numberMatch[0]) * 60;
-  }
-  
-  return totalSeconds;
-}
-
-function formatSecondsToDisplay(totalSeconds) {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  
-  const parts = [];
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  if (seconds > 0) parts.push(`${seconds}s`);
-  
-  return parts.length > 0 ? parts.join(' ') : '0s';
 }
 
 // ============================================

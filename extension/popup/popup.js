@@ -4,6 +4,7 @@
  */
 
 import { AUTOPLAY_CONFIG, getSiteDisplayName } from '../utils/config.js';
+import { parseTimeInput, formatSecondsToDisplay, formatDurationMinutes } from '../utils/time-utils.js';
 
 // ============================================// CONSTANTS
 // ============================================
@@ -450,69 +451,6 @@ function stopLocalUpdates() {
 }
 
 // ============================================
-// INPUT PARSING
-// ============================================
-
-/**
- * Parse time input string to seconds
- * Supports: 30 (seconds), 30s, 5m, 1h, 1h 30m 45s
- * @returns {number|null} seconds or null if invalid
- */
-function parseTimeInput(input) {
-  input = input.trim().toLowerCase();
-  
-  // Empty input
-  if (!input) return null;
-  
-  // Pure number = seconds (for custom timer flexibility)
-  if (/^\d+$/.test(input)) {
-    return parseInt(input, 10);
-  }
-  
-  let totalSeconds = 0;
-  
-  // Hours
-  const hourMatch = input.match(/(\d+(?:\.\d+)?)\s*h/);
-  if (hourMatch) {
-    totalSeconds += parseFloat(hourMatch[1]) * 3600;
-  }
-  
-  // Minutes
-  const minMatch = input.match(/(\d+(?:\.\d+)?)\s*m(?!s)/);
-  if (minMatch) {
-    totalSeconds += parseFloat(minMatch[1]) * 60;
-  }
-  
-  // Seconds
-  const secMatch = input.match(/(\d+(?:\.\d+)?)\s*s/);
-  if (secMatch) {
-    totalSeconds += parseFloat(secMatch[1]);
-  }
-  
-  return totalSeconds > 0 ? Math.round(totalSeconds) : null;
-}
-
-/**
- * Format seconds to human readable string
- */
-function formatSecondsToDisplay(totalSeconds) {
-  if (totalSeconds < 60) {
-    return totalSeconds + 's';
-  }
-  
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.round(totalSeconds % 60);
-  
-  let result = '';
-  if (hours > 0) result += hours + 'h ';
-  if (minutes > 0) result += minutes + 'm';
-  if (seconds > 0 && hours === 0) result += (minutes > 0 ? ' ' : '') + seconds + 's';
-  
-  return result.trim() || '0s';
-}
-
-// ============================================
 // PRESET TIMERS
 // ============================================
 
@@ -641,19 +579,6 @@ function hideInputError() {
 
 // Note: Message handling removed - popup uses polling via startLocalUpdates
 // This prevents race conditions when multiple popups are open
-
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
-
-function formatDurationMinutes(seconds) {
-  if (!seconds) return '--';
-  const mins = Math.round(seconds / 60);
-  if (mins < 60) return `${mins}min`;
-  const hours = Math.floor(mins / 60);
-  const remainingMins = mins % 60;
-  return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
-}
 
 // ============================================
 // CLEANUP

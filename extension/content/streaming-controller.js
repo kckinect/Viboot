@@ -4,6 +4,8 @@
  * Handles: video detection, pause/play, timer overlay, custom timer prompts
  */
 
+import { parseTimeInput, formatSecondsToDisplay, formatCountdown } from '../utils/time-utils.js';
+
 // ============================================================================
 // CONFIGURATION CONSTANTS
 // ============================================================================
@@ -36,58 +38,9 @@ const AUTOPLAY_CONFIG = {
 
 if (!window.AutoPlayUtils) {
   window.AutoPlayUtils = {
-    /**
-     * Parse duration string to seconds (1s, 30s, 5m, 2h, 1h30m, etc.)
-     */
-    parseCustomDuration(input) {
-      const trimmed = input.trim().toLowerCase();
-      
-      // Plain number = seconds
-      if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
-        const seconds = parseFloat(trimmed);
-        return (seconds >= 1 && seconds <= 86400) ? Math.round(seconds) : -1;
-      }
-      
-      // Parse format like "1h 30m 45s"
-      let totalSeconds = 0;
-      const regex = /(\d+(?:\.\d+)?)\s*([smh])/g;
-      const unitValues = { s: 1, m: 60, h: 3600 };
-      let match;
-      
-      while ((match = regex.exec(trimmed)) !== null) {
-        totalSeconds += parseFloat(match[1]) * unitValues[match[2]];
-      }
-      
-      if (totalSeconds === 0) return -1;
-      return (totalSeconds >= 1 && totalSeconds <= 86400) ? Math.round(totalSeconds) : -1;
-    },
-
-    /**
-     * Format seconds to human readable duration
-     */
-    formatDuration(seconds) {
-      if (seconds < 60) return seconds + 's';
-      const hours = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      if (hours > 0) {
-        return hours + 'h' + (mins > 0 ? ' ' + mins + 'm' : '');
-      }
-      return mins + 'm';
-    },
-
-    /**
-     * Format seconds for countdown display (MM:SS or H:MM:SS)
-     */
-    formatCountdown(remaining) {
-      const hours = Math.floor(remaining / 3600);
-      const minutes = Math.floor((remaining % 3600) / 60);
-      const seconds = remaining % 60;
-      
-      if (hours > 0) {
-        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-      }
-      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    }
+    parseCustomDuration: parseTimeInput,
+    formatDuration: formatSecondsToDisplay,
+    formatCountdown: formatCountdown
   };
 }
 

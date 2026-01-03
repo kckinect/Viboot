@@ -1,5 +1,6 @@
 import { ConfigManager } from '../utils/config-manager.js';
 import { timerEngine } from './timer-engine.js';
+import { formatSecondsToDisplay } from '../utils/time-utils.js';
 
 // ============================================
 // CONFIGURATION CONSTANTS
@@ -36,19 +37,6 @@ const SERVICE_WORKER_CONFIG = {
 
 // Default presets in seconds
 const DEFAULT_PRESETS = SERVICE_WORKER_CONFIG.DEFAULT_PRESETS;
-
-// Format seconds to display string
-function formatSecondsToDisplay(totalSeconds) {
-  if (totalSeconds < 60) return totalSeconds + 's';
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.round(totalSeconds % 60);
-  let result = '';
-  if (hours > 0) result += hours + 'h ';
-  if (minutes > 0) result += minutes + 'm';
-  if (seconds > 0 && hours === 0) result += (minutes > 0 ? ' ' : '') + seconds + 's';
-  return result.trim() || '0s';
-}
 
 // Create context menu items with retry logic
 async function createContextMenus(retryCount = 0) {
