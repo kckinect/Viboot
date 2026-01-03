@@ -42,9 +42,9 @@
 - ✅ Screenshot guide
 
 ### Deployment
-- ✅ Production ZIP package (321KB)
+- ✅ Production ZIP package (334KB)
 - ✅ Manifest V3 compliant
-- ✅ All assets included
+- ✅ All assets included (including settings page)
 - ✅ Clean, no dev files
 
 ---
