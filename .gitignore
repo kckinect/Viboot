@@ -11,6 +11,12 @@ logs/
 *.log
 npm-debug.log*
 
+# Backup and temporary files
+*.bak
+*~
+*.tmp
+*.swp
+
 # OS files
 .DS_Store
 Thumbs.db
