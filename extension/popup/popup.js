@@ -14,20 +14,12 @@ const ERROR_DISPLAY_DURATION = 3000; // milliseconds
 const POLLING_INTERVAL = 1000; // milliseconds
 const FEEDBACK_DISPLAY_DURATION = 1500; // milliseconds
 
-// Default presets in seconds
-const DEFAULT_PRESETS = [
-  30 * 60,   // 30m (main clock)
-  60 * 60,   // 1h
-  90 * 60,   // 1h 30m
-  120 * 60   // 2h
-];
-
 // ============================================// STATE
 // ============================================
 
 let currentTimer = null;
 let updateInterval = null;
-let currentPresets = [...DEFAULT_PRESETS];
+let currentPresets = [...AUTOPLAY_CONFIG.defaultPresets];
 
 // ============================================
 // DOM ELEMENTS
@@ -345,7 +337,7 @@ function showInactiveTimer() {
   elements.timerControls.classList.add('hidden');
   
   // Display first preset as the default
-  const firstPresetSeconds = currentPresets[0] || DEFAULT_PRESETS[0];
+  const firstPresetSeconds = currentPresets[0] || AUTOPLAY_CONFIG.defaultPresets[0];
   elements.timerValue.textContent = formatSecondsToDisplay(firstPresetSeconds);
   elements.timerLabel.textContent = 'Tap to start';
   elements.ringProgress.style.strokeDashoffset = String(RING_CIRCUMFERENCE);
@@ -490,7 +482,7 @@ function setupEventListeners() {
 function handleTimerRingClick() {
   // If timer is inactive, start it with first preset
   if (!currentTimer || !currentTimer.active) {
-    const firstPresetSeconds = currentPresets[0] || DEFAULT_PRESETS[0];
+    const firstPresetSeconds = currentPresets[0] || AUTOPLAY_CONFIG.defaultPresets[0];
     startPresetTimer(firstPresetSeconds);
     return;
   }

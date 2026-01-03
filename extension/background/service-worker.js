@@ -1,21 +1,15 @@
 import { ConfigManager } from '../utils/config-manager.js';
 import { timerEngine } from './timer-engine.js';
 import { formatSecondsToDisplay } from '../utils/time-utils.js';
+import { AUTOPLAY_CONFIG } from '../utils/config.js';
 
 // ============================================
 // CONFIGURATION CONSTANTS
 // ============================================
 
 const SERVICE_WORKER_CONFIG = {
-  // Default timer presets (in seconds)
-  DEFAULT_PRESETS: [
-    15 * 60,   // 15 minutes
-    30 * 60,   // 30 minutes
-    45 * 60,   // 45 minutes
-    60 * 60,   // 1 hour
-    90 * 60,   // 1 hour 30 minutes
-    120 * 60   // 2 hours
-  ],
+  // Default timer presets (in seconds) - imported from config
+  DEFAULT_PRESETS: AUTOPLAY_CONFIG.defaultPresets,
   
   // Validation limits
   VALIDATION: {

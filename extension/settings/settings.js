@@ -5,17 +5,11 @@
 
 import { trackPageView, trackSettingChange } from '../utils/analytics.js';
 import { parseTimeInput, formatSecondsToDisplay } from '../utils/time-utils.js';
+import { AUTOPLAY_CONFIG } from '../utils/config.js';
 
 // ============================================
 // CONSTANTS
 // ============================================
-
-const DEFAULT_PRESETS = [
-  30 * 60,   // 30m (main clock)
-  60 * 60,   // 1h
-  90 * 60,   // 1h 30m
-  120 * 60   // 2h
-];
 
 const TOAST_DURATION = 2000;
 const STORAGE_KEYS = [
@@ -33,7 +27,7 @@ const STORAGE_KEYS = [
 // STATE
 // ============================================
 
-let currentPresets = [...DEFAULT_PRESETS];
+let currentPresets = [...AUTOPLAY_CONFIG.defaultPresets];
 let settings = {
   theme: 'dark',
   showNotifications: true,
@@ -380,8 +374,8 @@ async function savePresets() {
     
     // Use default if empty
     if (!value) {
-      newPresets.push(DEFAULT_PRESETS[i]);
-      input.value = formatSecondsToDisplay(DEFAULT_PRESETS[i]);
+      newPresets.push(AUTOPLAY_CONFIG.defaultPresets[i]);
+      input.value = formatSecondsToDisplay(AUTOPLAY_CONFIG.defaultPresets[i]);
       continue;
     }
     
@@ -422,8 +416,8 @@ async function resetPresets() {
   if (!confirm('Reset all presets to default values?')) return;
   
   try {
-    await chrome.storage.local.set({ timerPresets: DEFAULT_PRESETS });
-    currentPresets = [...DEFAULT_PRESETS];
+    await chrome.storage.local.set({ timerPresets: AUTOPLAY_CONFIG.defaultPresets });
+    currentPresets = [...AUTOPLAY_CONFIG.defaultPresets];
     populatePresetEditor();
     chrome.runtime.sendMessage({ action: 'refreshContextMenus' }).catch(() => {});
     showToast('✓', 'Presets reset');
@@ -508,7 +502,7 @@ async function resetAllSettings() {
       notificationSound: 'none',
       compactMode: false
     });
-    currentPresets = [...DEFAULT_PRESETS];
+    currentPresets = [...AUTOPLAY_CONFIG.defaultPresets];
     
     await loadSettings();
     showToast('✓', 'All settings reset');

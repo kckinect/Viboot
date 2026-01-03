@@ -14,6 +14,16 @@ export const AUTOPLAY_CONFIG = {
   version: '2.0',
   
   // ============================================
+  // DEFAULT TIMER PRESETS (in seconds)
+  // ============================================
+  defaultPresets: [
+    30 * 60,   // 30 minutes (main clock)
+    60 * 60,   // 1 hour
+    90 * 60,   // 1.5 hours
+    120 * 60   // 2 hours
+  ],
+  
+  // ============================================
   // SOCIAL MEDIA LINKS
   // Set to null or empty string to hide a link
   // Icons are loaded from assets/icons/social/

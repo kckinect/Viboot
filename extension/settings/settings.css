@@ -174,14 +174,14 @@ body {
   position: relative;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  /* Hide scrollbar for all browsers */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
   scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
 }
 
 .tabs-nav-container::-webkit-scrollbar {
-  display: none;
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .tab-btn {
