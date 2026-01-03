@@ -1,14 +1,19 @@
 /**
  * Google Analytics 4 Integration for Chrome Extension
  * Uses Measurement Protocol API to bypass CSP restrictions
+ * 
+ * NOTE: Analytics is currently disabled. To enable:
+ * 1. Replace GA_MEASUREMENT_ID with your actual GA4 Measurement ID
+ * 2. Replace GA_API_SECRET with your Measurement Protocol API secret
+ * 3. See ANALYTICS_SETUP.md for full setup instructions
  */
 
 // ============================================
 // CONFIGURATION
 // ============================================
 
-const GA_MEASUREMENT_ID = 'G-XXXXXXXXXX'; // Replace with your GA4 Measurement ID
-const GA_API_SECRET = 'YOUR_API_SECRET'; // Replace with your Measurement Protocol API secret
+const GA_MEASUREMENT_ID = 'G-XXXXXXXXXX'; // PLACEHOLDER - Replace with your GA4 Measurement ID
+const GA_API_SECRET = 'YOUR_API_SECRET';   // PLACEHOLDER - Replace with your Measurement Protocol API secret
 const GA_ENDPOINT = `https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`;
 
 // Debug mode (sends to debug endpoint)
@@ -89,6 +94,14 @@ async function trackEvent(eventName, eventParams = {}) {
     };
     
     const endpoint = DEBUG_MODE ? DEBUG_ENDPOINT : GA_ENDPOINT;
+    
+    // Skip actual tracking if placeholders are still in use
+    if (GA_MEASUREMENT_ID === 'G-XXXXXXXXXX' || GA_API_SECRET === 'YOUR_API_SECRET') {
+      if (DEBUG_MODE) {
+        console.log('[Analytics] Tracking disabled - placeholders detected. Configure in analytics.js');
+      }
+      return;
+    }
     
     await fetch(endpoint, {
       method: 'POST',
