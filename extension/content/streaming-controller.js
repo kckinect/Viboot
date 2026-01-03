@@ -1177,13 +1177,17 @@ if (!window.autoplayMessageListenerAdded) {
       return;
     }
     
+    // ONLY MAIN FRAME RESPONDS - Prevents duplicate processing in iframes
+    const isMainFrame = window.self === window.top;
+    if (!isMainFrame) {
+      // Silently ignore messages in iframes - main frame will handle it
+      return;
+    }
+    
     // Log only important actions (not routine updates)
     if (!['updateOverlay', 'timerUpdate'].includes(request.action)) {
       console.log('[AutoPlay] Message received:', request.action);
     }
-
-    // Check if we're in main frame (for overlay-related actions)
-    const isMainFrame = window.self === window.top;
 
     try {
       switch (request.action) {
